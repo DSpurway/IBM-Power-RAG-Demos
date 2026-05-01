@@ -35,9 +35,6 @@ RUN npm run build
 # Clean npm cache after build to avoid permission issues
 RUN rm -rf /tmp/.npm
 
-# Expose port
-EXPOSE 3000
-
 # Set environment variables
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1

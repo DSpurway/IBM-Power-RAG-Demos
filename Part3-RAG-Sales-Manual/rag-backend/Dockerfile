@@ -99,9 +99,6 @@ ENV OPENSEARCH_HOST=opensearch-service \
     CORS_ORIGIN=* \
     PYTHONUNBUFFERED=1
 
-# Expose port
-EXPOSE 8080
-
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD python -c "import requests; requests.get('http://localhost:8080/health', timeout=5)"
