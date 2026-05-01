@@ -2,6 +2,19 @@
 
 A collection of demonstrations showcasing Retrieval Augmented Generation (RAG) on IBM Power10 systems using OpenShift.
 
+## Acknowledgments
+
+This project builds upon and adapts components from the **IBM Open-Source AI Foundation for Power**, specifically:
+
+- **[IBM project-ai-services](https://github.com/IBM/project-ai-services)** - AI Services framework
+  - OpenSearch deployment for IBM Power (ppc64le) architecture
+  - RAG backend patterns and best practices
+  - Vector database integration approaches
+
+The IBM Open-Source AI Foundation for Power ([documentation](https://www.ibm.com/docs/en/aiservices)) provides optimized AI services for IBM Power systems. While these services are optimized for IBM Spyre™ on Power, this demo adapts them for use on standard OpenShift on Power10 **without requiring Spyre**.
+
+We gratefully acknowledge the IBM project-ai-services team and the IBM Open-Source AI Foundation for Power initiative for their foundational work in AI services on Power systems.
+
 ## Overview
 
 This repository contains three progressive demonstrations:

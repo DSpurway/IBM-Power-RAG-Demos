@@ -2,6 +2,18 @@
 
 Consolidated Python/Flask backend service for the RAG (Retrieval Augmented Generation) demo. This service combines all RAG operations into a single, unified API.
 
+## Acknowledgments
+
+This implementation adapts patterns and approaches from the **IBM Open-Source AI Foundation for Power**, specifically [IBM project-ai-services](https://github.com/IBM/project-ai-services):
+- OpenSearch integration for vector storage
+- Hybrid search implementation
+- Document processing pipelines
+- Power-optimized dependency management
+
+The IBM Open-Source AI Foundation for Power ([documentation](https://www.ibm.com/docs/en/aiservices)) provides optimized AI services for IBM Power systems. While these services are optimized for IBM Spyre™ on Power, this backend adapts them for use on **standard OpenShift on Power10 without requiring Spyre**.
+
+We gratefully acknowledge the IBM project-ai-services team and the IBM Open-Source AI Foundation for Power initiative.
+
 ## 🎉 Now Using ChromaDB!
 
 **Migration Complete**: This backend now uses ChromaDB instead of Milvus for simplified deployment and better Power10 compatibility.

@@ -1,6 +1,17 @@
 # OpenSearch for IBM Power (ppc64le)
-# Based on IBM project-ai-services implementation
+#
+# Based on IBM project-ai-services implementation:
 # https://github.com/IBM/project-ai-services/tree/main/ai-services/assets/services/opensearch
+#
+# This Dockerfile adapts the IBM project-ai-services OpenSearch deployment
+# for use in OpenShift on IBM Power10 systems. Key adaptations:
+# - Uses Red Hat UBI 9 as base image for OpenShift compatibility
+# - Downloads official OpenSearch ppc64le tarball
+# - Configures for single-node development mode
+# - Disables security for simplified demo deployment
+#
+# Acknowledgments: We gratefully acknowledge the IBM project-ai-services team
+# for their foundational work in AI services on Power systems.
 
 FROM registry.access.redhat.com/ubi9/ubi:latest
 

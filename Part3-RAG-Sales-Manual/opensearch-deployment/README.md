@@ -2,6 +2,12 @@
 
 This directory contains the Dockerfile and configuration for deploying OpenSearch on IBM Power (ppc64le) architecture.
 
+## Acknowledgments
+
+This implementation is based on the **IBM Open-Source AI Foundation for Power**, specifically the [IBM project-ai-services](https://github.com/IBM/project-ai-services) OpenSearch deployment.
+
+The IBM Open-Source AI Foundation for Power ([documentation](https://www.ibm.com/docs/en/aiservices)) provides optimized AI services for IBM Power systems. While these services are optimized for IBM Spyre™ on Power, this deployment adapts them for use on **standard OpenShift on Power10 without requiring Spyre**.
+
 ## Overview
 
 OpenSearch is used as the vector database for RAG (Retrieval Augmented Generation) functionality in Parts 2 and 3 of the demo.
