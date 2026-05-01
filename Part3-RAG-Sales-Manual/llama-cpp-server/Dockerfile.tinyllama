@@ -16,9 +16,7 @@ RUN LD_LIBRARY_PATH=/opt/lib cmake -B build \
     -DBLAS_INCLUDE_DIRS=/.venv/lib/python3.12/site-packages/openblas/include \
     -DGGML_CUDA=OFF
 
-RUN cmake --build build --config Release 
-
-EXPOSE 8080
+RUN cmake --build build --config Release
 
 RUN mkdir -p /models
 # TinyLlama model for Part 1 - demonstrates hallucinations
