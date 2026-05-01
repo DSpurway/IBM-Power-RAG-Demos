@@ -776,7 +776,7 @@ def generate():
         data = request.get_json()
         prompt = data.get('prompt')
         temperature = data.get('temperature', 0.1)
-        n_predict = data.get('n_predict', 100)
+        n_predict = data.get('n_predict', 256)  # Increased from 100 to 256 for better responses
         stream = data.get('stream', False)
         model = data.get('model', 'granite')  # 'granite' or 'tinyllama'
         

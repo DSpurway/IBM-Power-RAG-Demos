@@ -1,0 +1,73 @@
+# OpenSearch Deployment for IBM Power (ppc64le)
+# Uses IBM-maintained ppc64le OpenSearch image from IBM Container Registry
+#
+# References:
+# - IBM ppc64le containers: https://community.ibm.com/community/user/blogs/priya-seth/2023/04/05/open-source-containers-for-power-in-icr
+# - OpenSearch on Power: https://community.ibm.com/community/user/blogs/sumit-dubey/2025/06/18/opensearch-an-alternative-to-elasticse
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: opensearch-service
+  labels:
+    app: opensearch-service
+    app.kubernetes.io/part-of: ibm-power-rag-demos-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: opensearch-service
+  template:
+    metadata:
+      labels:
+        app: opensearch-service
+    spec:
+      containers:
+      - name: opensearch
+        image: icr.io/ppc64le-oss/opensearch-ppc64le:3.3.0
+        env:
+        - name: discovery.type
+          value: "single-node"
+        - name: OPENSEARCH_JAVA_OPTS
+          value: "-Xms512m -Xmx512m"
+        - name: DISABLE_SECURITY_PLUGIN
+          value: "true"
+        ports:
+        - containerPort: 9200
+          name: http
+        - containerPort: 9300
+          name: transport
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "1"
+        volumeMounts:
+        - name: opensearch-data
+          mountPath: /usr/share/opensearch/data
+      volumes:
+      - name: opensearch-data
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: opensearch-service
+  labels:
+    app: opensearch-service
+    app.kubernetes.io/part-of: ibm-power-rag-demos-app
+spec:
+  selector:
+    app: opensearch-service
+  ports:
+  - name: http
+    port: 9200
+    targetPort: 9200
+  - name: transport
+    port: 9300
+    targetPort: 9300
+  type: ClusterIP
+
+# Made with Bob

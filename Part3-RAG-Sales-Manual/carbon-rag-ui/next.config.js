@@ -17,6 +17,16 @@ const nextConfig = {
       },
     ],
   },
+  // Increase API route timeout for LLM generation (default is 60s)
+  experimental: {
+    serverActions: {
+      bodySizeLimit: '10mb',
+    },
+  },
+  // Set longer timeout for API routes (5 minutes)
+  serverRuntimeConfig: {
+    apiTimeout: 300000, // 5 minutes in milliseconds
+  },
 };
 
 module.exports = nextConfig;

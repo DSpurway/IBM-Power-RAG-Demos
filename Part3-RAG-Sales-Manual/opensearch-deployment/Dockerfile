@@ -27,8 +27,9 @@ RUN dnf install -y \
 RUN groupadd -g 1000 opensearch && \
     useradd -u 1000 -g 1000 -d /usr/share/opensearch opensearch
 
-# Set OpenSearch version
-ENV OPENSEARCH_VERSION=2.11.0
+# Set OpenSearch version (ppc64le support added in 2.5.0+)
+# Using 2.5.0 as it's the first version with confirmed ppc64le support
+ENV OPENSEARCH_VERSION=2.5.0
 
 # Download and install OpenSearch
 WORKDIR /tmp
