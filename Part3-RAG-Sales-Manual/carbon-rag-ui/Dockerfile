@@ -35,6 +35,10 @@ RUN npm run build
 # Clean npm cache after build to avoid permission issues
 RUN rm -rf /tmp/.npm
 
+# Create writable cache directory for Next.js runtime
+RUN mkdir -p /app/.next/cache && \
+    chown -R nextjs:nextjs /app/.next/cache
+
 # Set environment variables
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
@@ -42,6 +46,9 @@ ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 ENV npm_config_cache=/tmp/.npm
 ENV HOME=/tmp
+# Disable Next.js cache completely
+ENV NEXT_CACHE_HANDLER=""
+ENV NEXT_PRIVATE_STANDALONE_CONFIG="{\"cache\":false}"
 
 # Start the application
 CMD ["npm", "start"]

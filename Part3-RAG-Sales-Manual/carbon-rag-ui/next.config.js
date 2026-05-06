@@ -22,6 +22,8 @@ const nextConfig = {
     serverActions: {
       bodySizeLimit: '10mb',
     },
+    // Disable ISR (Incremental Static Regeneration) to prevent cache writes
+    isrMemoryCacheSize: 0,
   },
   // Set longer timeout for API routes (5 minutes)
   serverRuntimeConfig: {
@@ -40,6 +42,11 @@ const nextConfig = {
         ],
       },
     ];
+  },
+  // Disable on-demand ISR and caching completely
+  onDemandEntries: {
+    maxInactiveAge: 0,
+    pagesBufferLength: 0,
   },
 };
 
