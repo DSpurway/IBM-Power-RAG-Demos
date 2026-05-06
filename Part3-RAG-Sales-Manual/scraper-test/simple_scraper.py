@@ -4,18 +4,131 @@ from bs4 import BeautifulSoup
 from datetime import datetime
 import traceback
 import time
+import re
+from typing import List, Dict
 
 app = Flask(__name__)
 
+def html_table_to_markdown(table):
+    """Convert HTML table to Markdown format"""
+    rows = []
+    
+    # Process header rows
+    headers = []
+    header_row = table.find('thead')
+    if header_row:
+        for th in header_row.find_all(['th', 'td']):
+            headers.append(th.get_text(strip=True))
+    else:
+        # Try first row as header
+        first_row = table.find('tr')
+        if first_row:
+            for th in first_row.find_all(['th', 'td']):
+                headers.append(th.get_text(strip=True))
+    
+    if headers:
+        rows.append('| ' + ' | '.join(headers) + ' |')
+        rows.append('|' + '|'.join(['---' for _ in headers]) + '|')
+    
+    # Process body rows
+    tbody = table.find('tbody') or table
+    for tr in tbody.find_all('tr'):
+        # Skip if this was the header row
+        if headers and tr == table.find('tr'):
+            continue
+            
+        cells = []
+        for td in tr.find_all(['td', 'th']):
+            cell_text = td.get_text(strip=True).replace('|', '\\|')  # Escape pipes
+            cells.append(cell_text)
+        
+        if cells:
+            rows.append('| ' + ' | '.join(cells) + ' |')
+    
+    return '\n'.join(rows)
+
+
+def extract_withdrawal_dates(text: str) -> List[Dict[str, str]]:
+    """Extract withdrawal/discontinuation dates from text"""
+    dates = []
+    
+    # Pattern for "No Longer Available as of DATE"
+    pattern1 = r'No Longer Available as of ([A-Za-z]+ \d{1,2},? \d{4})'
+    # Pattern for "Marketing Withdrawn" or "Service Discontinued" dates
+    pattern2 = r'(Marketing Withdrawn|Service Discontinued)[:\s]+([A-Za-z]+ \d{1,2},? \d{4})'
+    # Pattern for dates in parentheses with location
+    pattern3 = r'\(For ([^)]+) - No Longer Available as of ([A-Za-z]+ \d{1,2},? \d{4})\)'
+    
+    for match in re.finditer(pattern1, text):
+        dates.append({
+            'type': 'withdrawal',
+            'date': match.group(1),
+            'location': 'general'
+        })
+    
+    for match in re.finditer(pattern2, text):
+        dates.append({
+            'type': match.group(1).lower().replace(' ', '_'),
+            'date': match.group(2),
+            'location': 'general'
+        })
+    
+    for match in re.finditer(pattern3, text):
+        dates.append({
+            'type': 'withdrawal',
+            'date': match.group(2),
+            'location': match.group(1)
+        })
+    
+    return dates
+
+
+def extract_feature_codes(text: str) -> List[Dict]:
+    """Extract feature codes and their attributes from text"""
+    feature_codes = []
+    
+    # Pattern for feature codes like (#EFA1) or (EFA1)
+    fc_pattern = r'\(#?([A-Z0-9]{4})\)\s+(.+?)(?=\n\n|\Z)'
+    
+    for match in re.finditer(fc_pattern, text, re.DOTALL):
+        code = match.group(1)
+        description = match.group(2).strip()
+        
+        # Extract attributes
+        attributes = {}
+        
+        # Check for withdrawal date in description
+        withdrawal_dates = extract_withdrawal_dates(description)
+        if withdrawal_dates:
+            attributes['withdrawal_dates'] = withdrawal_dates
+        
+        # Extract minimum/maximum values
+        min_match = re.search(r'Minimum required:\s*(\d+)', description)
+        if min_match:
+            attributes['minimum_required'] = int(min_match.group(1))
+        
+        max_match = re.search(r'Maximum allowed:\s*(\d+)', description)
+        if max_match:
+            attributes['maximum_allowed'] = int(max_match.group(1))
+        
+        # Extract CSU status
+        csu_match = re.search(r'CSU:\s*(Yes|No)', description)
+        if csu_match:
+            attributes['csu'] = csu_match.group(1) == 'Yes'
+        
+        feature_codes.append({
+            'code': code,
+            'description': description.split('\n')[0],  # First line only
+            'full_text': description,
+            'attributes': attributes
+        })
+    
+    return feature_codes
+
+
 def scrape_ibm_docs_simple(url):
     """
-    Scrape IBM Docs page using simple requests + BeautifulSoup
-    
-    Note: This gets the initial HTML. For JavaScript-rendered content,
-    we would need a headless browser, but those aren't available for ppc64le.
-    
-    Alternative: Use IBM's "Print" or "PDF" export feature which generates
-    static HTML with all content rendered server-side.
+    Enhanced scraper with table preservation and metadata extraction
     """
     try:
         headers = {
@@ -48,18 +161,40 @@ def scrape_ibm_docs_simple(url):
                 'note': 'Page may require JavaScript rendering'
             }
         
-        # Extract content
-        title = soup.find('h1')
-        paragraphs = content_div.find_all('p')
-        headings = content_div.find_all(['h1', 'h2', 'h3', 'h4'])
-        tables = content_div.find_all('table')
-        lists = content_div.find_all(['ul', 'ol'])
+        # Extract content with table preservation
+        content_parts = []
         
-        main_text = content_div.get_text(separator='\n', strip=True)
+        # Process tables first - convert to Markdown
+        tables = content_div.find_all('table')
+        for table in tables:
+            markdown_table = html_table_to_markdown(table)
+            if markdown_table:
+                content_parts.append(f"\n{markdown_table}\n")
+            # Replace table with placeholder
+            table.replace_with(soup.new_string('[TABLE_EXTRACTED]'))
+        
+        # Extract text from other elements
+        for elem in content_div.find_all(['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li', 'div']):
+            text = elem.get_text(strip=True)
+            if text and len(text) > 10 and '[TABLE_EXTRACTED]' not in text:
+                content_parts.append(text)
+        
+        main_text = '\n\n'.join(content_parts)
+        
+        # Extract metadata
+        title = soup.find('h1')
+        full_text = soup.get_text()
+        
+        # Extract withdrawal dates
+        withdrawal_dates = extract_withdrawal_dates(full_text)
+        
+        # Extract feature codes
+        feature_codes = extract_feature_codes(full_text)
         
         # Extract sections
+        headings = content_div.find_all(['h1', 'h2', 'h3', 'h4'])
         sections = []
-        for heading in headings[:20]:  # Limit to first 20 headings
+        for heading in headings[:20]:
             section = {
                 'level': heading.name,
                 'title': heading.get_text(strip=True),
@@ -72,7 +207,7 @@ def scrape_ibm_docs_simple(url):
                 if current.name in ['p', 'ul', 'ol', 'table']:
                     text = current.get_text(strip=True)
                     if text:
-                        section['content'].append(text[:500])  # Limit content length
+                        section['content'].append(text[:500])
                 current = current.find_next_sibling()
                 count += 1
             
@@ -83,24 +218,31 @@ def scrape_ibm_docs_simple(url):
         
         result = {
             'success': True,
-            'method': 'Simple requests + BeautifulSoup (no JS rendering)',
+            'method': 'Enhanced scraper with table preservation and metadata extraction',
             'url': url,
             'scraped_at': datetime.now().isoformat(),
             'page_title': title.get_text(strip=True) if title else None,
             'stats': {
-                'paragraphs': len(paragraphs),
+                'paragraphs': len(content_div.find_all('p')),
                 'headings': len(headings),
                 'tables': len(tables),
-                'lists': len(lists),
+                'tables_converted_to_markdown': len([p for p in content_parts if '|' in p and '---' in p]),
+                'lists': len(content_div.find_all(['ul', 'ol'])),
                 'sections': len(sections),
                 'total_text_length': len(main_text),
-                'html_length': len(response.content)
+                'html_length': len(response.content),
+                'withdrawal_dates_found': len(withdrawal_dates),
+                'feature_codes_found': len(feature_codes)
             },
             'sample_headings': [h.get_text(strip=True) for h in headings[:10]],
             'text_sample': main_text[:2000],
             'quality_score': quality,
             'sections_preview': sections[:5],
-            'note': 'This scrapes initial HTML only. For full JS-rendered content, consider using IBM Docs PDF export feature.'
+            'metadata': {
+                'withdrawal_dates': withdrawal_dates,
+                'feature_codes': feature_codes[:10]  # Limit to first 10
+            },
+            'note': 'Enhanced with table preservation (Markdown format) and metadata extraction'
         }
         
         return result

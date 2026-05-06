@@ -5,8 +5,13 @@ USE_DOCLING = os.getenv("USE_DOCLING", "false").lower() == "true"
 ENABLE_TABLES = os.getenv("ENABLE_TABLES", "true").lower() == "true"
 ENABLE_OCR = os.getenv("ENABLE_OCR", "false").lower() == "true"
 
-DOCLING_CHUNK_SIZE = int(os.getenv("DOCLING_CHUNK_SIZE", "768"))
-DOCLING_CHUNK_OVERLAP = int(os.getenv("DOCLING_CHUNK_OVERLAP", "50"))
+# Increased chunk size to better handle tables and structured content
+# 1024 tokens is approximately 750-800 words, suitable for:
+# - Product lifecycle tables
+# - Feature code descriptions with attributes
+# - Multi-row table content
+DOCLING_CHUNK_SIZE = int(os.getenv("DOCLING_CHUNK_SIZE", "1024"))
+DOCLING_CHUNK_OVERLAP = int(os.getenv("DOCLING_CHUNK_OVERLAP", "100"))
 
 PDF_CHUNK_SIZE = int(os.getenv("PDF_CHUNK_SIZE", "100"))
 DOCLING_LARGE_PDF_THRESHOLD = int(os.getenv("DOCLING_LARGE_PDF_THRESHOLD", "100"))
