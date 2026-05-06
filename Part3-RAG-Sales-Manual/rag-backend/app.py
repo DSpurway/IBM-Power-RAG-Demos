@@ -1021,16 +1021,57 @@ def ingest_sales_manual():
         # Update bulk ingestion state
         bulk_ingestion_state['current_server'] = server_model
         
+        # Map server model to Sales Manual URL
+        server_urls = {
+            'E1180': 'https://www.ibm.com/docs/en/announcements/family-908005-power-e1180-enterprise-server-9080-heu',
+            'E1150': 'https://www.ibm.com/docs/en/announcements/family-904302-power-e1150-enterprise-midrange-technology-based-server-9043-mru',
+            'S1124': 'https://www.ibm.com/docs/en/announcements/family-982402-power-s1124-9824-42a',
+            'S1122': 'https://www.ibm.com/docs/en/announcements/family-982401-power-s1122-9824-22a',
+            'E1080': 'https://www.ibm.com/docs/en/announcements/power-e1080-enterprise-server',
+            'E1050': 'https://www.ibm.com/docs/en/announcements/power-e1050-enterprise-midrange-technology-based-server',
+            'S1024': 'https://www.ibm.com/docs/en/announcements/power-s1024-9105-42a',
+            'S1022': 'https://www.ibm.com/docs/en/announcements/power-s1022-9105-22a',
+            'S1014': 'https://www.ibm.com/docs/en/announcements/power-s1014-9105-41b',
+            'S1012': 'https://www.ibm.com/docs/en/announcements/family-9028-01-power-s1012',
+            'L1024': 'https://www.ibm.com/docs/en/announcements/power-l1024-9786-42h',
+            'L1022': 'https://www.ibm.com/docs/en/announcements/power-l1022-9786-22h',
+            'E980': 'https://www.ibm.com/docs/en/announcements/power-system-e980-9080-m9s',
+            'E950': 'https://www.ibm.com/docs/en/announcements/power-system-e950-9040-mr9',
+            'S924': 'https://www.ibm.com/docs/en/announcements/power-system-s924-9009-42a',
+            'S924-G': 'https://www.ibm.com/docs/en/announcements/power-system-s924-9009-42g',
+            'S922': 'https://www.ibm.com/docs/en/announcements/power-system-s922-9009-22a',
+            'S922-G': 'https://www.ibm.com/docs/en/announcements/power-system-s922-9009-22g',
+            'S914': 'https://www.ibm.com/docs/en/announcements/power-system-s914-9009-41a',
+            'S914-G': 'https://www.ibm.com/docs/en/announcements/power-system-s914-9009-41g-2023-10-24',
+            'H924': 'https://www.ibm.com/docs/en/announcements/power-system-h924-9223-42s-2023-10-24',
+            'H922': 'https://www.ibm.com/docs/en/announcements/power-system-h922-9223-22s-2023-10-24',
+            'IC922': 'https://www.ibm.com/docs/en/announcements/power-system-ic922-9183-22x-2021-12-14',
+            'L922': 'https://www.ibm.com/docs/en/announcements/power-system-l922-9008-22l',
+            'LC922': 'https://www.ibm.com/docs/en/announcements/power-system-lc922-9006-22p',
+            'LC921': 'https://www.ibm.com/docs/en/announcements/power-systems-lc921-9006-12p',
+        }
+        
+        sales_manual_url = server_urls.get(server_model)
+        if not sales_manual_url:
+            error_msg = f"No Sales Manual URL found for server model: {server_model}"
+            logger.error(error_msg)
+            bulk_ingestion_state['failed'].append({
+                'server': server_model,
+                'error': error_msg
+            })
+            return jsonify({'error': error_msg}), 404
+        
         # Call Windows scraper service
         # The scraper is running on the Windows laptop
         scraper_url = os.environ.get('SCRAPER_URL', 'http://host.docker.internal:5000')
         
-        logger.info(f"Calling scraper at {scraper_url}/scrape")
+        logger.info(f"Calling scraper at {scraper_url}/scrape?url={sales_manual_url}")
         
         try:
-            scraper_response = requests.post(
+            # Use GET request with URL parameter as the scraper expects
+            scraper_response = requests.get(
                 f"{scraper_url}/scrape",
-                json={'server_model': server_model},
+                params={'url': sales_manual_url, 'wait': 10},
                 timeout=600  # 10 minute timeout for scraping
             )
             scraper_response.raise_for_status()
