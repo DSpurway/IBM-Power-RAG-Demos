@@ -27,6 +27,20 @@ const nextConfig = {
   serverRuntimeConfig: {
     apiTimeout: 300000, // 5 minutes in milliseconds
   },
+  // Disable all caching to prevent browser storage issues
+  // This is critical for API routes that proxy to backend services
+  async headers() {
+    return [
+      {
+        source: '/api/:path*',
+        headers: [
+          { key: 'Cache-Control', value: 'no-store, no-cache, must-revalidate, max-age=0' },
+          { key: 'Pragma', value: 'no-cache' },
+          { key: 'Expires', value: '0' },
+        ],
+      },
+    ];
+  },
 };
 
 module.exports = nextConfig;
