@@ -1,6 +1,7 @@
 """
 Consolidated RAG Backend Service with OpenSearch
 Adapted from IBM project-ai-services implementation
+Enhanced with hybrid query routing and reranking
 """
 
 from flask import Flask, request, jsonify, Response
@@ -24,6 +25,11 @@ from docling_config import (
     PDF_CHUNK_SIZE,
     docling_config_dict,
 )
+
+# Import hybrid query components
+from query_classifier import QueryClassifier, QueryType
+from table_lookup_service import TableLookupService
+from reranker_service import RerankerService
 
 app = Flask(__name__)
 
@@ -102,6 +108,38 @@ def get_embeddings():
         _embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
         logger.info("Embeddings model loaded")
     return _embeddings
+
+# Initialize hybrid query components (lazy loading)
+_query_classifier = None
+_table_lookup_service = None
+_reranker_service = None
+
+def get_query_classifier():
+    """Lazy load query classifier"""
+    global _query_classifier
+    if _query_classifier is None:
+        logger.info("Initializing query classifier")
+        _query_classifier = QueryClassifier()
+        logger.info("Query classifier initialized successfully")
+    return _query_classifier
+
+def get_table_lookup_service():
+    """Lazy load table lookup service"""
+    global _table_lookup_service
+    if _table_lookup_service is None:
+        logger.info("Initializing table lookup service")
+        _table_lookup_service = TableLookupService()
+        logger.info("Table lookup service initialized successfully")
+    return _table_lookup_service
+
+def get_reranker_service():
+    """Lazy load reranker service"""
+    global _reranker_service
+    if _reranker_service is None:
+        logger.info("Initializing reranker service (downloading model if needed)")
+        _reranker_service = RerankerService()
+        logger.info("Reranker service initialized successfully")
+    return _reranker_service
 
 def _generate_index_name(collection_name):
     """Generate OpenSearch index name from collection name"""
@@ -533,100 +571,205 @@ def load_pdf_url():
 
 @app.route('/api/search', methods=['POST'])
 def search():
-    """Search for relevant documents using hybrid search"""
+    """
+    Enhanced search with hybrid query routing and reranking
+    Routes queries to appropriate handler based on classification
+    """
     try:
         data = request.get_json()
         question = data.get('question')
         collection_name = data.get('collection_name', 'sales_manuals')
-        k = data.get('k', 3)
+        k = data.get('k', 5)  # Increased default for reranking
         mode = data.get('mode', 'hybrid')  # dense, sparse, or hybrid
+        use_reranking = data.get('use_reranking', True)  # Enable reranking by default
         
         if not question:
             return jsonify({'error': 'question is required'}), 400
         
         logger.info(f"Searching in collection {collection_name} for: {question}")
         
-        # Get embeddings and client
-        embeddings = get_embeddings()
-        client = get_opensearch_client()
-        index_name = _generate_index_name(collection_name)
+        # Step 1: Classify the query
+        classifier = get_query_classifier()
+        classification = classifier.classify(question)
         
-        if not client.indices.exists(index=index_name):
-            return jsonify({'error': f'Collection {collection_name} does not exist'}), 404
+        logger.info(f"Query classified as: {classification['query_type']}")
+        logger.info(f"Entities: {classification.get('entities', {})}")
         
-        # Generate query embedding
-        query_vector = embeddings.embed_query(question)
+        # Step 2: Route based on classification
+        if classification['query_type'] == QueryType.TABLE_LOOKUP:
+            # Direct table lookup - no LLM needed
+            table_service = get_table_lookup_service()
+            result = table_service.lookup(
+                server_model=classification['entities'].get('server_model'),
+                field=classification['entities'].get('field')
+            )
+            
+            return jsonify({
+                'success': True,
+                'query_type': 'table_lookup',
+                'results': [{
+                    'content': result['answer'],
+                    'metadata': {
+                        'source': 'lifecycle_table',
+                        'server_model': result.get('server_model'),
+                        'field': result.get('field'),
+                        'confidence': result.get('confidence', 1.0)
+                    },
+                    'score': 1.0
+                }],
+                'count': 1,
+                'classification': classification
+            })
         
-        # Build search query based on mode
-        if mode == "dense":
+        elif classification['query_type'] == QueryType.METADATA_LOOKUP:
+            # Metadata-based search (e.g., feature codes, withdrawal dates)
+            # Use OpenSearch metadata filters
+            client = get_opensearch_client()
+            index_name = _generate_index_name(collection_name)
+            
+            if not client.indices.exists(index=index_name):
+                return jsonify({'error': f'Collection {collection_name} does not exist'}), 404
+            
+            # Build metadata query
+            must_clauses = [{"match": {"text": question}}]
+            
+            # Add entity filters if available
+            if 'server_model' in classification['entities']:
+                must_clauses.append({
+                    "match": {"metadata.server_model": classification['entities']['server_model']}
+                })
+            
+            if 'feature_code' in classification['entities']:
+                must_clauses.append({
+                    "match": {"metadata.feature_codes": classification['entities']['feature_code']}
+                })
+            
             search_body = {
-                "size": k,
+                "size": k * 2,  # Get more for reranking
                 "_source": ["chunk_id", "text", "metadata"],
                 "query": {
-                    "knn": {
-                        "embedding": {
-                            "vector": query_vector,
-                            "k": k
+                    "bool": {
+                        "must": must_clauses
+                    }
+                }
+            }
+            
+            response = client.search(index=index_name, body=search_body)
+            hits = response['hits']['hits']
+            
+            logger.info(f"Metadata search found {len(hits)} results")
+            
+        else:  # QueryType.RAG - Standard RAG with vector search
+            # Get embeddings and client
+            embeddings = get_embeddings()
+            client = get_opensearch_client()
+            index_name = _generate_index_name(collection_name)
+            
+            if not client.indices.exists(index=index_name):
+                return jsonify({'error': f'Collection {collection_name} does not exist'}), 404
+            
+            # Generate query embedding
+            query_vector = embeddings.embed_query(question)
+            
+            # Retrieve more candidates for reranking
+            retrieval_k = k * 4 if use_reranking else k
+            
+            # Build search query based on mode
+            if mode == "dense":
+                search_body = {
+                    "size": retrieval_k,
+                    "_source": ["chunk_id", "text", "metadata"],
+                    "query": {
+                        "knn": {
+                            "embedding": {
+                                "vector": query_vector,
+                                "k": retrieval_k
+                            }
                         }
                     }
                 }
-            }
-        elif mode == "sparse":
-            search_body = {
-                "size": k,
-                "_source": ["chunk_id", "text", "metadata"],
-                "query": {
-                    "match": {"text": question}
-                }
-            }
-        else:  # hybrid
-            search_body = {
-                "size": k,
-                "_source": ["chunk_id", "text", "metadata"],
-                "query": {
-                    "hybrid": {
-                        "queries": [
-                            {
-                                "knn": {
-                                    "embedding": {
-                                        "vector": query_vector,
-                                        "k": k * 3
-                                    }
-                                }
-                            },
-                            {
-                                "match": {"text": question}
-                            }
-                        ]
+            elif mode == "sparse":
+                search_body = {
+                    "size": retrieval_k,
+                    "_source": ["chunk_id", "text", "metadata"],
+                    "query": {
+                        "match": {"text": question}
                     }
                 }
-            }
+            else:  # hybrid
+                search_body = {
+                    "size": retrieval_k,
+                    "_source": ["chunk_id", "text", "metadata"],
+                    "query": {
+                        "hybrid": {
+                            "queries": [
+                                {
+                                    "knn": {
+                                        "embedding": {
+                                            "vector": query_vector,
+                                            "k": retrieval_k
+                                        }
+                                    }
+                                },
+                                {
+                                    "match": {"text": question}
+                                }
+                            ]
+                        }
+                    }
+                }
+            
+            # Execute search
+            params = {"search_pipeline": "hybrid_pipeline"} if mode == "hybrid" else {}
+            response = client.search(index=index_name, body=search_body, params=params)
+            hits = response['hits']['hits']
+            
+            logger.info(f"Vector search found {len(hits)} results")
         
-        # Execute search
-        params = {"search_pipeline": "hybrid_pipeline"} if mode == "hybrid" else {}
-        response = client.search(index=index_name, body=search_body, params=params)
+        # Step 3: Apply reranking if enabled and we have RAG/metadata results
+        if use_reranking and classification['query_type'] != QueryType.TABLE_LOOKUP and len(hits) > 0:
+            reranker = get_reranker_service()
+            
+            # Extract texts for reranking
+            texts = [hit["_source"].get("text", "") for hit in hits]
+            
+            # Rerank
+            reranked_indices = reranker.rerank(question, texts, top_k=k)
+            
+            # Reorder hits based on reranking
+            reranked_hits = [hits[i] for i in reranked_indices]
+            
+            logger.info(f"Reranked to top {len(reranked_hits)} results")
+        else:
+            # No reranking - just take top k
+            reranked_hits = hits[:k]
         
-        logger.info(f"Found {len(response['hits']['hits'])} results")
-        
-        # Format results
+        # Step 4: Format results
         formatted_results = []
-        for hit in response["hits"]["hits"]:
+        for i, hit in enumerate(reranked_hits):
             source = hit["_source"]
             result = {
                 'content': source.get("text"),
                 'metadata': source.get("metadata", {}),
-                'score': float(hit["_score"])
+                'score': float(hit.get("_score", 0)),
+                'rank': i + 1,
+                'reranked': use_reranking and classification['query_type'] != QueryType.TABLE_LOOKUP
             }
             formatted_results.append(result)
         
         return jsonify({
             'success': True,
+            'query_type': classification['query_type'].value,
             'results': formatted_results,
-            'count': len(formatted_results)
+            'count': len(formatted_results),
+            'classification': classification,
+            'reranking_applied': use_reranking and classification['query_type'] != QueryType.TABLE_LOOKUP
         })
         
     except Exception as e:
         logger.error(f"Error searching: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
         return jsonify({'error': str(e)}), 500
 
 # ============================================================================
