@@ -46,6 +46,9 @@ COPY docling_config.py .
 COPY token_utils.py .
 COPY docling_converter.py .
 COPY hierarchical_chunker.py .
+COPY query_classifier.py .
+COPY table_lookup_service.py .
+COPY reranker_service.py .
 
 # Create PDF directory and copy sample PDFs
 RUN mkdir -p /app/pdfs
@@ -76,6 +79,9 @@ COPY --from=builder /app/docling_config.py .
 COPY --from=builder /app/token_utils.py .
 COPY --from=builder /app/docling_converter.py .
 COPY --from=builder /app/hierarchical_chunker.py .
+COPY --from=builder /app/query_classifier.py .
+COPY --from=builder /app/table_lookup_service.py .
+COPY --from=builder /app/reranker_service.py .
 COPY --from=builder /app/pdfs /app/pdfs
 
 # Environment variables with defaults
