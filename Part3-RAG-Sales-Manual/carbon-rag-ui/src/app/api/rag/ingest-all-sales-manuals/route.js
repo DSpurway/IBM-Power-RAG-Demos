@@ -41,77 +41,27 @@ const IBM_POWER_SERVERS = [
 
 export async function POST(request) {
   try {
-    const backendUrl = process.env.RAG_BACKEND_URL || 'http://rag-backend-opensearch:8080';
+    const backendUrl = process.env.RAG_BACKEND_URL || 'http://rag-backend:8080';
     
-    console.log(`[Bulk Ingestion API] Starting bulk ingestion of ${IBM_POWER_SERVERS.length} servers`);
+    console.log(`[Bulk Ingestion API] Calling backend to start bulk ingestion`);
     
-    // Initialize the backend bulk ingestion state
-    try {
-      const initResponse = await fetch(`${backendUrl}/api/init-bulk-ingestion`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ total: IBM_POWER_SERVERS.length }),
-      });
-      
-      if (!initResponse.ok) {
-        console.warn('[Bulk Ingestion API] Failed to initialize backend state, continuing anyway');
-      }
-    } catch (err) {
-      console.warn('[Bulk Ingestion API] Error initializing backend state:', err);
+    // Call the backend's bulk ingestion endpoint
+    // The backend will handle all the looping and processing
+    const response = await fetch(`${backendUrl}/api/start-bulk-ingestion`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    });
+    
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+      throw new Error(errorData.error || 'Failed to start bulk ingestion');
     }
     
-    // Start the bulk ingestion process
-    // Note: This will trigger the Windows scraper for each server sequentially
-    // The backend will handle the actual scraping and ingestion
+    const data = await response.json();
     
-    const results = {
-      total: IBM_POWER_SERVERS.length,
-      started: [],
-      failed: [],
-      message: `Bulk ingestion started for ${IBM_POWER_SERVERS.length} servers. This will take several hours.`
-    };
+    console.log(`[Bulk Ingestion API] Backend started bulk ingestion: ${data.message}`);
     
-    // Trigger ingestion for each server
-    // We'll do this asynchronously and return immediately
-    // The backend will handle the long-running process
-    
-    for (const server of IBM_POWER_SERVERS) {
-      try {
-        console.log(`[Bulk Ingestion API] Triggering ingestion for ${server.model}`);
-        
-        // Call the backend to trigger scraping for this server
-        // The backend will call the Windows scraper
-        const response = await fetch(`${backendUrl}/api/ingest-sales-manual`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            server_model: server.model,
-            server_name: server.name,
-            processor: server.processor
-          }),
-          // 5 minute timeout per server
-          signal: AbortSignal.timeout(300000),
-        });
-        
-        if (response.ok) {
-          results.started.push(server.model);
-          console.log(`[Bulk Ingestion API] Successfully started ingestion for ${server.model}`);
-        } else {
-          const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-          results.failed.push({ model: server.model, error: errorData.error || 'Failed to start' });
-          console.error(`[Bulk Ingestion API] Failed to start ingestion for ${server.model}:`, errorData);
-        }
-      } catch (error) {
-        results.failed.push({ model: server.model, error: error.message });
-        console.error(`[Bulk Ingestion API] Error triggering ingestion for ${server.model}:`, error);
-      }
-    }
-    
-    console.log(`[Bulk Ingestion API] Bulk ingestion complete. Started: ${results.started.length}, Failed: ${results.failed.length}`);
-    
-    return Response.json(results, {
+    return Response.json(data, {
       status: 200,
       headers: {
         'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',

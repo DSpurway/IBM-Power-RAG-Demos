@@ -1167,6 +1167,109 @@ def init_bulk_ingestion():
     except Exception as e:
         logger.error(f"Error initializing bulk ingestion: {e}")
         return jsonify({'error': str(e)}), 500
+@app.route('/api/start-bulk-ingestion', methods=['POST'])
+def start_bulk_ingestion():
+    """
+    Start bulk ingestion of all servers in a background thread
+    Returns immediately and processes servers asynchronously
+    """
+    try:
+        # Server list in correct order (Power11 -> Power10 -> Power9, largest first)
+        servers = [
+            {"model": "E1180", "name": "IBM Power E1180", "processor": "POWER11"},
+            {"model": "E1150", "name": "IBM Power E1150", "processor": "POWER11"},
+            {"model": "S1124", "name": "IBM Power S1124", "processor": "POWER11"},
+            {"model": "S1122", "name": "IBM Power S1122", "processor": "POWER11"},
+            {"model": "E1080", "name": "IBM Power E1080", "processor": "POWER10"},
+            {"model": "E1050", "name": "IBM Power E1050", "processor": "POWER10"},
+            {"model": "S1024", "name": "IBM Power S1024", "processor": "POWER10"},
+            {"model": "S1022", "name": "IBM Power S1022", "processor": "POWER10"},
+            {"model": "S1014", "name": "IBM Power S1014", "processor": "POWER10"},
+            {"model": "S1012", "name": "IBM Power S1012", "processor": "POWER10"},
+            {"model": "L1024", "name": "IBM Power L1024", "processor": "POWER10"},
+            {"model": "L1022", "name": "IBM Power L1022", "processor": "POWER10"},
+            {"model": "E980", "name": "IBM Power System E980", "processor": "POWER9"},
+            {"model": "E950", "name": "IBM Power System E950", "processor": "POWER9"},
+            {"model": "S924", "name": "IBM Power System S924", "processor": "POWER9"},
+            {"model": "S924-G", "name": "IBM Power System S924", "processor": "POWER9"},
+            {"model": "S922", "name": "IBM Power System S922", "processor": "POWER9"},
+            {"model": "S922-G", "name": "IBM Power System S922", "processor": "POWER9"},
+            {"model": "S914", "name": "IBM Power System S914", "processor": "POWER9"},
+            {"model": "S914-G", "name": "IBM Power System S914", "processor": "POWER9"},
+            {"model": "H924", "name": "IBM Power System H924", "processor": "POWER9"},
+            {"model": "H922", "name": "IBM Power System H922", "processor": "POWER9"},
+            {"model": "IC922", "name": "IBM Power System IC922", "processor": "POWER9"},
+            {"model": "L922", "name": "IBM Power System L922", "processor": "POWER9"},
+            {"model": "LC922", "name": "IBM Power System LC922", "processor": "POWER9"},
+            {"model": "LC921", "name": "IBM Power System LC921", "processor": "POWER9"}
+        ]
+        
+        # Initialize state
+        bulk_ingestion_state['in_progress'] = True
+        bulk_ingestion_state['current_server'] = None
+        bulk_ingestion_state['completed'] = []
+        bulk_ingestion_state['failed'] = []
+        bulk_ingestion_state['total'] = len(servers)
+        bulk_ingestion_state['started_at'] = datetime.now().isoformat()
+        
+        # Start background thread to process servers
+        def process_servers():
+            for server in servers:
+                try:
+                    bulk_ingestion_state['current_server'] = server['model']
+                    logger.info(f"[Bulk Ingestion] Processing {server['model']}")
+                    
+                    # Call the ingest-sales-manual endpoint internally
+                    # This simulates what the UI was doing, but server-side
+                    with app.test_request_context(
+                        '/api/ingest-sales-manual',
+                        method='POST',
+                        json={
+                            'server_model': server['model'],
+                            'server_name': server['name'],
+                            'processor': server['processor']
+                        }
+                    ):
+                        response = ingest_sales_manual()
+                        if isinstance(response, tuple):
+                            response_data, status_code = response
+                        else:
+                            response_data = response
+                            status_code = 200
+                        
+                        if status_code == 200:
+                            bulk_ingestion_state['completed'].append(server['model'])
+                            logger.info(f"[Bulk Ingestion] ✓ {server['model']} completed")
+                        else:
+                            bulk_ingestion_state['failed'].append(server['model'])
+                            logger.error(f"[Bulk Ingestion] ✗ {server['model']} failed")
+                            
+                except Exception as e:
+                    bulk_ingestion_state['failed'].append(server['model'])
+                    logger.error(f"[Bulk Ingestion] Error processing {server['model']}: {e}")
+            
+            # Mark as complete
+            bulk_ingestion_state['in_progress'] = False
+            bulk_ingestion_state['current_server'] = None
+            logger.info(f"[Bulk Ingestion] Complete: {len(bulk_ingestion_state['completed'])} succeeded, {len(bulk_ingestion_state['failed'])} failed")
+        
+        # Start thread
+        import threading
+        thread = threading.Thread(target=process_servers, daemon=True)
+        thread.start()
+        
+        logger.info(f"Started bulk ingestion of {len(servers)} servers in background thread")
+        
+        return jsonify({
+            'success': True,
+            'message': f'Bulk ingestion started for {len(servers)} servers',
+            'total': len(servers)
+        })
+        
+    except Exception as e:
+        logger.error(f"Error starting bulk ingestion: {e}")
+        return jsonify({'error': str(e)}), 500
+
 
 
 
