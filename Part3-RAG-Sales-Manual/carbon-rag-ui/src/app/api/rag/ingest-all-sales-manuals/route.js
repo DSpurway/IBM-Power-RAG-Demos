@@ -111,7 +111,14 @@ export async function POST(request) {
     
     console.log(`[Bulk Ingestion API] Bulk ingestion complete. Started: ${results.started.length}, Failed: ${results.failed.length}`);
     
-    return Response.json(results, { status: 200 });
+    return Response.json(results, {
+      status: 200,
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+        'Pragma': 'no-cache',
+        'Expires': '0'
+      }
+    });
   } catch (error) {
     console.error('[Bulk Ingestion API] Error:', error);
     return Response.json(
