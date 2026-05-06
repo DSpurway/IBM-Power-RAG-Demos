@@ -1112,13 +1112,26 @@ def ingest_sales_manual():
         
         logger.info(f"Ingesting scraped content into collection: {collection_name}")
         
+        # Transform Code Engine scraper format to expected format
+        # Code Engine returns: {"full_text": "...", ...}
+        # Backend expects: {"success": true, "sections": [...], ...}
+        transformed_data = {
+            'success': True,
+            'url': sales_manual_url,
+            'page_title': f"IBM Power {server_model} Sales Manual",
+            'server_model': server_model,
+            'sections': [{
+                'title': f"IBM Power {server_model} Documentation",
+                'content': scraper_data.get('full_text', ''),
+                'level': 1
+            }],
+            'scraped_at': datetime.now().isoformat()
+        }
+        
         # Call the existing ingest-scraped-content endpoint
         ingest_response = requests.post(
             'http://localhost:8080/ingest-scraped-content',
-            json={
-                'collection_name': collection_name,
-                'scraped_data': scraper_data
-            },
+            json=transformed_data,
             timeout=300  # 5 minute timeout for ingestion
         )
         
