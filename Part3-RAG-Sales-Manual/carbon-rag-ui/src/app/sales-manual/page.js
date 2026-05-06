@@ -42,35 +42,35 @@ import React, { useState, useEffect } from 'react';
 // Within each generation: Enterprise first, then Scale-out, then others (Linux, High-performance, etc.)
 // Generation is indicated by the number in model name: E1150=Power11, E1050=Power10, E950=Power9
 const IBM_POWER_SERVERS = [
-  // POWER11 Servers - Enterprise first, then Scale-out
-  { model: "E1150", name: "IBM Power E1150", mtm: "9043-MRU", processor: "POWER11", url: "https://www.ibm.com/docs/en/announcements/family-904302-power-e1150-enterprise-midrange-technology-based-server-9043-mru", category: "Enterprise" },
+  // POWER11 Servers - Enterprise first (largest to smallest), then Scale-out (largest to smallest)
   { model: "E1180", name: "IBM Power E1180", mtm: "9080-HEU", processor: "POWER11", url: "https://www.ibm.com/docs/en/announcements/family-908005-power-e1180-enterprise-server-9080-heu", category: "Enterprise" },
-  { model: "S1122", name: "IBM Power S1122", mtm: "9824-22A", processor: "POWER11", url: "https://www.ibm.com/docs/en/announcements/family-982401-power-s1122-9824-22a", category: "Scale-out" },
+  { model: "E1150", name: "IBM Power E1150", mtm: "9043-MRU", processor: "POWER11", url: "https://www.ibm.com/docs/en/announcements/family-904302-power-e1150-enterprise-midrange-technology-based-server-9043-mru", category: "Enterprise" },
   { model: "S1124", name: "IBM Power S1124", mtm: "9824-42A", processor: "POWER11", url: "https://www.ibm.com/docs/en/announcements/family-982402-power-s1124-9824-42a", category: "Scale-out" },
-  // POWER10 Servers - Enterprise first, then Scale-out, then Linux
-  { model: "E1050", name: "IBM Power E1050", mtm: "9043-MRX", processor: "POWER10", url: "https://www.ibm.com/docs/en/announcements/power-e1050-enterprise-midrange-technology-based-server", category: "Enterprise" },
+  { model: "S1122", name: "IBM Power S1122", mtm: "9824-22A", processor: "POWER11", url: "https://www.ibm.com/docs/en/announcements/family-982401-power-s1122-9824-22a", category: "Scale-out" },
+  // POWER10 Servers - Enterprise first (largest to smallest), then Scale-out (largest to smallest), then Linux (largest to smallest)
   { model: "E1080", name: "IBM Power E1080", mtm: "9080-HEX", processor: "POWER10", url: "https://www.ibm.com/docs/en/announcements/power-e1080-enterprise-server", category: "Enterprise" },
-  { model: "S1012", name: "IBM Power S1012", mtm: "9028-21B", processor: "POWER10", url: "https://www.ibm.com/docs/en/announcements/family-9028-01-power-s1012", category: "Scale-out" },
-  { model: "S1014", name: "IBM Power S1014", mtm: "9105-41B", processor: "POWER10", url: "https://www.ibm.com/docs/en/announcements/power-s1014-9105-41b", category: "Scale-out" },
-  { model: "S1022", name: "IBM Power S1022", mtm: "9105-22A", processor: "POWER10", url: "https://www.ibm.com/docs/en/announcements/power-s1022-9105-22a", category: "Scale-out" },
+  { model: "E1050", name: "IBM Power E1050", mtm: "9043-MRX", processor: "POWER10", url: "https://www.ibm.com/docs/en/announcements/power-e1050-enterprise-midrange-technology-based-server", category: "Enterprise" },
   { model: "S1024", name: "IBM Power S1024", mtm: "9105-42A", processor: "POWER10", url: "https://www.ibm.com/docs/en/announcements/power-s1024-9105-42a", category: "Scale-out" },
-  { model: "L1022", name: "IBM Power L1022", mtm: "9786-22H", processor: "POWER10", url: "https://www.ibm.com/docs/en/announcements/power-l1022-9786-22h", category: "Linux-only" },
+  { model: "S1022", name: "IBM Power S1022", mtm: "9105-22A", processor: "POWER10", url: "https://www.ibm.com/docs/en/announcements/power-s1022-9105-22a", category: "Scale-out" },
+  { model: "S1014", name: "IBM Power S1014", mtm: "9105-41B", processor: "POWER10", url: "https://www.ibm.com/docs/en/announcements/power-s1014-9105-41b", category: "Scale-out" },
+  { model: "S1012", name: "IBM Power S1012", mtm: "9028-21B", processor: "POWER10", url: "https://www.ibm.com/docs/en/announcements/family-9028-01-power-s1012", category: "Scale-out" },
   { model: "L1024", name: "IBM Power L1024", mtm: "9786-42H", processor: "POWER10", url: "https://www.ibm.com/docs/en/announcements/power-l1024-9786-42h", category: "Linux-only" },
-  // POWER9 Servers - Enterprise first, then Scale-out, then others (High-performance, Intensive-compute, Linux)
-  { model: "E950", name: "IBM Power System E950", mtm: "9040-MR9", processor: "POWER9", url: "https://www.ibm.com/docs/en/announcements/power-system-e950-9040-mr9", category: "Enterprise" },
+  { model: "L1022", name: "IBM Power L1022", mtm: "9786-22H", processor: "POWER10", url: "https://www.ibm.com/docs/en/announcements/power-l1022-9786-22h", category: "Linux-only" },
+  // POWER9 Servers - Enterprise first (largest to smallest), then Scale-out (largest to smallest), then others (High-performance, Intensive-compute, Linux - largest to smallest)
   { model: "E980", name: "IBM Power System E980", mtm: "9080-M9S", processor: "POWER9", url: "https://www.ibm.com/docs/en/announcements/power-system-e980-9080-m9s", category: "Enterprise" },
-  { model: "S914", name: "IBM Power System S914", mtm: "9009-41A", processor: "POWER9", url: "https://www.ibm.com/docs/en/announcements/power-system-s914-9009-41a", category: "Scale-out" },
-  { model: "S914-G", name: "IBM Power System S914", mtm: "9009-41G", processor: "POWER9", url: "https://www.ibm.com/docs/en/announcements/power-system-s914-9009-41g-2023-10-24", category: "Scale-out" },
-  { model: "S922", name: "IBM Power System S922", mtm: "9009-22A", processor: "POWER9", url: "https://www.ibm.com/docs/en/announcements/power-system-s922-9009-22a", category: "Scale-out" },
-  { model: "S922-G", name: "IBM Power System S922", mtm: "9009-22G", processor: "POWER9", url: "https://www.ibm.com/docs/en/announcements/power-system-s922-9009-22g", category: "Scale-out" },
+  { model: "E950", name: "IBM Power System E950", mtm: "9040-MR9", processor: "POWER9", url: "https://www.ibm.com/docs/en/announcements/power-system-e950-9040-mr9", category: "Enterprise" },
   { model: "S924", name: "IBM Power System S924", mtm: "9009-42A", processor: "POWER9", url: "https://www.ibm.com/docs/en/announcements/power-system-s924-9009-42a", category: "Scale-out" },
   { model: "S924-G", name: "IBM Power System S924", mtm: "9009-42G", processor: "POWER9", url: "https://www.ibm.com/docs/en/announcements/power-system-s924-9009-42g", category: "Scale-out" },
-  { model: "H922", name: "IBM Power System H922", mtm: "9223-22S", processor: "POWER9", url: "https://www.ibm.com/docs/en/announcements/power-system-h922-9223-22s-2023-10-24", category: "High-performance" },
+  { model: "S922", name: "IBM Power System S922", mtm: "9009-22A", processor: "POWER9", url: "https://www.ibm.com/docs/en/announcements/power-system-s922-9009-22a", category: "Scale-out" },
+  { model: "S922-G", name: "IBM Power System S922", mtm: "9009-22G", processor: "POWER9", url: "https://www.ibm.com/docs/en/announcements/power-system-s922-9009-22g", category: "Scale-out" },
+  { model: "S914", name: "IBM Power System S914", mtm: "9009-41A", processor: "POWER9", url: "https://www.ibm.com/docs/en/announcements/power-system-s914-9009-41a", category: "Scale-out" },
+  { model: "S914-G", name: "IBM Power System S914", mtm: "9009-41G", processor: "POWER9", url: "https://www.ibm.com/docs/en/announcements/power-system-s914-9009-41g-2023-10-24", category: "Scale-out" },
   { model: "H924", name: "IBM Power System H924", mtm: "9223-42S", processor: "POWER9", url: "https://www.ibm.com/docs/en/announcements/power-system-h924-9223-42s-2023-10-24", category: "High-performance" },
+  { model: "H922", name: "IBM Power System H922", mtm: "9223-22S", processor: "POWER9", url: "https://www.ibm.com/docs/en/announcements/power-system-h922-9223-22s-2023-10-24", category: "High-performance" },
   { model: "IC922", name: "IBM Power System IC922", mtm: "9183-22X", processor: "POWER9", url: "https://www.ibm.com/docs/en/announcements/power-system-ic922-9183-22x-2021-12-14", category: "Intensive-compute" },
   { model: "L922", name: "IBM Power System L922", mtm: "9008-22L", processor: "POWER9", url: "https://www.ibm.com/docs/en/announcements/power-system-l922-9008-22l", category: "Linux-only" },
-  { model: "LC921", name: "IBM Power System LC921", mtm: "9006-12P", processor: "POWER9", url: "https://www.ibm.com/docs/en/announcements/power-systems-lc921-9006-12p", category: "Linux-only" },
   { model: "LC922", name: "IBM Power System LC922", mtm: "9006-22P", processor: "POWER9", url: "https://www.ibm.com/docs/en/announcements/power-system-lc922-9006-22p", category: "Linux-only" },
+  { model: "LC921", name: "IBM Power System LC921", mtm: "9006-12P", processor: "POWER9", url: "https://www.ibm.com/docs/en/announcements/power-systems-lc921-9006-12p", category: "Linux-only" },
 ];
 
 export default function SalesManualPage() {
