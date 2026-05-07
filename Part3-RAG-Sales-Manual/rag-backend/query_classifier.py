@@ -42,7 +42,10 @@ class QueryClassifier:
         r"(?:IBM\s+)?Power\s+(?:System\s+)?[ELS]\d{3,4}",
         r"(?:IBM\s+)?Power\s+(?:System\s+)?[HL]C?\d{3,4}",
         r"(?:IBM\s+)?Power\s+(?:System\s+)?IC\d{3,4}",
-        r"\d{4}-[A-Z0-9]{3}",  # MTM format
+        r"\d{4}-[A-Z0-9]{3}",  # MTM format like 9080-HEU
+        r"\b[ELS]\d{3,4}\b",  # Standalone model like E1180, S1024, L922
+        r"\b[HL]C?\d{3,4}\b",  # Standalone model like H922, LC922
+        r"\bIC\d{3,4}\b",  # Standalone model like IC922
     ]
     
     def __init__(self):
