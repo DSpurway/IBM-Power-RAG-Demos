@@ -1218,6 +1218,17 @@ def start_bulk_ingestion():
     Uses MTM (Machine Type-Model) as unique identifier
     """
     try:
+        # Check if bulk ingestion is already in progress
+        if bulk_ingestion_state['in_progress']:
+            logger.warning("[Bulk Ingestion] Already in progress, rejecting new request")
+            return jsonify({
+                'error': 'Bulk ingestion already in progress',
+                'in_progress': True,
+                'current_server': bulk_ingestion_state['current_server'],
+                'completed_count': len(bulk_ingestion_state['completed']),
+                'total': bulk_ingestion_state['total']
+            }), 409  # Conflict
+        
         # Server list with MTM and URLs - ordered by processor generation (Power11 -> Power10 -> Power9)
         # Within each generation: Enterprise first, then Scale-out, then others (largest to smallest)
         servers = [

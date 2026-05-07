@@ -93,10 +93,43 @@ export default function SalesManualPage() {
   const [queryResults, setQueryResults] = useState(null);
   const [queryLoading, setQueryLoading] = useState(false);
 
-  // Load server status on mount
+  // Load server status on mount and check for ongoing bulk ingestion
   useEffect(() => {
-    loadServerStatus();
+    const initializePage = async () => {
+      // First, load server status
+      await loadServerStatus();
+      
+      // Then check if bulk ingestion is in progress
+      await checkBulkIngestionStatus();
+    };
+    
+    initializePage();
   }, []);
+
+  // Check if bulk ingestion is currently in progress (on page load)
+  const checkBulkIngestionStatus = async () => {
+    try {
+      const response = await fetch('/api/rag/bulk-ingestion-status');
+      if (!response.ok) return;
+      
+      const status = await response.json();
+      console.log('[Page Load] Bulk ingestion status:', status);
+      
+      // If bulk ingestion is in progress, resume polling
+      if (status.in_progress) {
+        console.log('[Page Load] Bulk ingestion in progress, resuming polling');
+        setBulkIngestionInProgress(true);
+        setBulkIngestionStatus(status);
+        setBulkIngestionStarted(true);
+        setError(`Bulk ingestion in progress: ${status.completed_count} of ${status.total} completed`);
+        
+        // Start polling
+        setTimeout(pollBulkIngestionStatus, 2000);
+      }
+    } catch (err) {
+      console.error('[Page Load] Error checking bulk ingestion status:', err);
+    }
+  };
 
   const loadServerStatus = async () => {
     setLoading(true);
@@ -128,6 +161,19 @@ export default function SalesManualPage() {
       });
       
       setServers(serversWithStatus);
+      
+      // Count indexed vs not-indexed
+      const indexedCount = serversWithStatus.filter(s => s.status === 'indexed').length;
+      const notIndexedCount = serversWithStatus.filter(s => s.status === 'not-indexed').length;
+      
+      console.log(`[Page Load] Server status: ${indexedCount} indexed, ${notIndexedCount} not indexed`);
+      
+      // Show helpful message if nothing is indexed
+      if (indexedCount === 0 && notIndexedCount > 0) {
+        setError('No servers indexed yet. Click "Load All Documents" to start bulk ingestion.');
+      } else if (notIndexedCount > 0) {
+        setError(`${indexedCount} servers indexed, ${notIndexedCount} not indexed. You can load individual servers or use "Load All Documents".`);
+      }
     } catch (err) {
       console.error('Error loading server status:', err);
       setError(err.message);
