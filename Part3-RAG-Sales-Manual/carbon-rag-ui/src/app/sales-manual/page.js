@@ -86,6 +86,7 @@ export default function SalesManualPage() {
   // Bulk ingestion progress state
   const [bulkIngestionInProgress, setBulkIngestionInProgress] = useState(false);
   const [bulkIngestionStatus, setBulkIngestionStatus] = useState(null);
+  const [bulkIngestionStarted, setBulkIngestionStarted] = useState(false); // Track if we've seen it start
   
   // Query state
   const [queryText, setQueryText] = useState('');
@@ -152,17 +153,29 @@ export default function SalesManualPage() {
       
       if (!response.ok) {
         console.error('Failed to fetch bulk ingestion status');
+        // Continue polling even on error
+        if (bulkIngestionInProgress) {
+          setTimeout(pollBulkIngestionStatus, 10000);
+        }
         return;
       }
       
       const status = await response.json();
+      console.log('[Bulk Ingestion] Status update:', status);
       setBulkIngestionStatus(status);
       
-      // If still in progress, continue polling
+      // Track if we've seen the ingestion actually start
       if (status.in_progress) {
+        setBulkIngestionStarted(true);
+      }
+      
+      // Continue polling if:
+      // 1. Backend says it's in progress, OR
+      // 2. We haven't seen it start yet (give backend thread time to initialize)
+      if (status.in_progress || !bulkIngestionStarted) {
         setTimeout(pollBulkIngestionStatus, 10000); // Poll every 10 seconds
       } else {
-        // Ingestion complete
+        // Ingestion complete (we've seen it start and now it's finished)
         setBulkIngestionInProgress(false);
         setLoading(false);
         
@@ -178,6 +191,10 @@ export default function SalesManualPage() {
       }
     } catch (err) {
       console.error('Error polling bulk ingestion status:', err);
+      // Continue polling even on error
+      if (bulkIngestionInProgress) {
+        setTimeout(pollBulkIngestionStatus, 10000);
+      }
     }
   };
 
@@ -185,6 +202,7 @@ export default function SalesManualPage() {
     setLoading(true);
     setBulkIngestionInProgress(true);
     setBulkIngestionStatus(null);
+    setBulkIngestionStarted(false); // Reset the started flag
     setError('Starting bulk ingestion of all 26 servers... This will take several hours.');
     
     try {
@@ -194,17 +212,36 @@ export default function SalesManualPage() {
         headers: { 'Content-Type': 'application/json' },
       });
       
-      if (!response.ok) throw new Error('Failed to start bulk ingestion');
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        throw new Error(errorData.error || 'Failed to start bulk ingestion');
+      }
       
       const data = await response.json();
-      setError(`Bulk ingestion started! Processing ${data.total} servers.`);
+      console.log('[Bulk Ingestion] Started:', data);
       
-      // Start polling for progress
-      setTimeout(pollBulkIngestionStatus, 5000); // Start polling after 5 seconds
+      // Set initial status to show progress tile immediately
+      setBulkIngestionStatus({
+        in_progress: true,
+        current_server: 'Initializing...',
+        completed: [],
+        failed: [],
+        total: data.total || 26,
+        completed_count: 0,
+        failed_count: 0,
+        started_at: new Date().toISOString()
+      });
+      
+      setError(`Bulk ingestion started! Processing ${data.total} servers. Status updates will appear below.`);
+      
+      // Start polling for progress immediately (backend thread starts quickly)
+      setTimeout(pollBulkIngestionStatus, 2000); // Start polling after 2 seconds
     } catch (err) {
+      console.error('[Bulk Ingestion] Error starting:', err);
       setError(`Error starting bulk ingestion: ${err.message}`);
       setLoading(false);
       setBulkIngestionInProgress(false);
+      setBulkIngestionStarted(false);
     }
   };
 

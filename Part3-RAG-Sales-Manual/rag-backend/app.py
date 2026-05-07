@@ -1168,7 +1168,7 @@ def bulk_ingestion_status():
     Returns progress information for polling
     """
     try:
-        return jsonify({
+        status = {
             'in_progress': bulk_ingestion_state['in_progress'],
             'current_server': bulk_ingestion_state['current_server'],
             'completed': bulk_ingestion_state['completed'],
@@ -1177,7 +1177,9 @@ def bulk_ingestion_status():
             'completed_count': len(bulk_ingestion_state['completed']),
             'failed_count': len(bulk_ingestion_state['failed']),
             'started_at': bulk_ingestion_state['started_at']
-        })
+        }
+        logger.info(f"[Bulk Ingestion Status] in_progress={status['in_progress']}, current={status['current_server']}, completed={status['completed_count']}/{status['total']}")
+        return jsonify(status)
     except Exception as e:
         logger.error(f"Error getting bulk ingestion status: {e}")
         return jsonify({'error': str(e)}), 500
