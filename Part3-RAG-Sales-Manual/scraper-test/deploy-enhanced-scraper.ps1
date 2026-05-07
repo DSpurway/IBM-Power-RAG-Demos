@@ -64,14 +64,23 @@ if ($ResourceGroup -eq "") {
     Write-Host "  Available resource groups:" -ForegroundColor Yellow
     ibmcloud resource groups
     Write-Host ""
-    $ResourceGroup = Read-Host "  Enter resource group name (or press Enter for 'Default')"
+    $ResourceGroup = Read-Host "  Enter resource group name (or press Enter for 'default')"
     if ($ResourceGroup -eq "") {
-        $ResourceGroup = "Default"
+        $ResourceGroup = "default"
     }
 }
 
 Write-Host "  Targeting resource group: $ResourceGroup" -ForegroundColor Cyan
-ibmcloud target -g $ResourceGroup
+$targetResult = ibmcloud target -g $ResourceGroup 2>&1
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "  Failed to target resource group. Error:" -ForegroundColor Red
+    Write-Host "  $targetResult" -ForegroundColor Red
+    Write-Host ""
+    Write-Host "Please run manually:" -ForegroundColor Yellow
+    Write-Host "  ibmcloud target -g default" -ForegroundColor White
+    Write-Host ""
+    exit 1
+}
 Write-Host "  Resource group targeted" -ForegroundColor Green
 Write-Host ""
 
