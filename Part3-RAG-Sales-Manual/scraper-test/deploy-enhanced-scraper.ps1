@@ -4,8 +4,8 @@
 param(
     [string]$ProjectName = "scraper-service",
     [string]$AppName = "ibm-docs-scraper-enhanced",
-    [string]$Region = "eu-gb",  # London/UK region
-    [string]$ResourceGroup = ""  # Will prompt if not provided
+    [string]$Region = "eu-gb",
+    [string]$ResourceGroup = ""
 )
 
 Write-Host "================================================================================" -ForegroundColor Cyan
@@ -83,16 +83,7 @@ if ($appExists) {
 }
 
 # Build and deploy from source
-ibmcloud ce app create `
-    --name $AppName `
-    --build-source . `
-    --dockerfile Dockerfile.enhanced `
-    --cpu 1 `
-    --memory 2G `
-    --min-scale 0 `
-    --max-scale 1 `
-    --port 8080 `
-    --wait
+ibmcloud ce app create --name $AppName --build-source . --dockerfile Dockerfile.enhanced --cpu 1 --memory 2G --min-scale 0 --max-scale 1 --port 8080 --wait
 
 if ($LASTEXITCODE -eq 0) {
     Write-Host ""
@@ -111,16 +102,16 @@ if ($LASTEXITCODE -eq 0) {
     Write-Host "  Scrape: $appUrl/scrape?url=https://www.ibm.com/docs/..." -ForegroundColor White
     Write-Host ""
     Write-Host "Enhanced Features:" -ForegroundColor Yellow
-    Write-Host "  ✓ Tables preserved as Markdown" -ForegroundColor Green
-    Write-Host "  ✓ Withdrawal dates extracted" -ForegroundColor Green
-    Write-Host "  ✓ Feature codes extracted" -ForegroundColor Green
-    Write-Host "  ✓ MTM detection" -ForegroundColor Green
-    Write-Host "  ✓ Structured sections" -ForegroundColor Green
+    Write-Host "  - Tables preserved as Markdown" -ForegroundColor Green
+    Write-Host "  - Withdrawal dates extracted" -ForegroundColor Green
+    Write-Host "  - Feature codes extracted" -ForegroundColor Green
+    Write-Host "  - MTM detection" -ForegroundColor Green
+    Write-Host "  - Structured sections" -ForegroundColor Green
     Write-Host ""
     Write-Host "Next steps:" -ForegroundColor Yellow
-    Write-Host "  1. Test the scraper with: curl $appUrl/health" -ForegroundColor White
-    Write-Host "  2. Update backend SCRAPER_URL environment variable to: $appUrl" -ForegroundColor White
-    Write-Host "  3. Re-run bulk ingestion to get enhanced data" -ForegroundColor White
+    Write-Host "  1. Test the scraper" -ForegroundColor White
+    Write-Host "  2. Update backend SCRAPER_URL to: $appUrl" -ForegroundColor White
+    Write-Host "  3. Re-run bulk ingestion" -ForegroundColor White
     Write-Host ""
 } else {
     Write-Host ""
