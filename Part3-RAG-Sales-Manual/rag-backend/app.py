@@ -934,17 +934,66 @@ def ingest_scraped_content():
 
 @app.route('/api/generate', methods=['POST'])
 def generate():
-    """Generate response from LLM with model selection support"""
+    """
+    Generate response with intelligent query routing
+    - Table lookup queries: Fast response from structured data (no LLM)
+    - Regular queries: Full RAG with LLM
+    """
     try:
         data = request.get_json()
         prompt = data.get('prompt')
         temperature = data.get('temperature', 0.1)
-        n_predict = data.get('n_predict', 256)  # Increased from 100 to 256 for better responses
+        n_predict = data.get('n_predict', 256)
         stream = data.get('stream', False)
         model = data.get('model', 'granite')  # 'granite' or 'tinyllama'
         
         if not prompt:
             return jsonify({'error': 'prompt is required'}), 400
+        
+        logger.info(f"Processing query: {prompt[:100]}...")
+        
+        # Step 1: Classify the query to determine if it's a table lookup
+        classifier = get_query_classifier()
+        query_intent = classifier.get_query_intent(prompt)
+        query_type = query_intent['query_type']
+        
+        logger.info(f"Query classified as: {query_type}")
+        
+        # Step 2: Handle table lookup queries without LLM
+        if query_type == 'table_lookup':
+            logger.info("Handling as table lookup query (no LLM needed)")
+            table_service = get_table_lookup_service()
+            
+            server_model = query_intent.get('server_model')
+            lifecycle_field = query_intent.get('lifecycle_field')
+            
+            if not server_model:
+                logger.warning("Could not extract server model from query")
+                # Fall through to LLM if we can't extract the model
+            else:
+                result = table_service.query(
+                    query=prompt,
+                    server_model=server_model,
+                    lifecycle_field=lifecycle_field
+                )
+                
+                if result.get('success'):
+                    logger.info(f"Table lookup successful for {server_model}")
+                    return jsonify({
+                        'success': True,
+                        'content': result['formatted_answer'],
+                        'query_type': 'table_lookup',
+                        'server_model': server_model,
+                        'field': lifecycle_field,
+                        'response_time_ms': result.get('response_time_ms', 10),
+                        'source': 'lifecycle_table'
+                    })
+                else:
+                    logger.warning(f"Table lookup failed: {result.get('error')}")
+                    # Fall through to LLM if table lookup fails
+        
+        # Step 3: For non-table queries or failed lookups, use LLM
+        logger.info(f"Using LLM for query (type: {query_type})")
         
         # Select LLM service based on model parameter
         if model.lower() == 'tinyllama':
@@ -995,6 +1044,7 @@ def generate():
             'success': True,
             'content': result.get('content', ''),
             'model': model,
+            'query_type': query_type,
             'timings': result.get('timings', {})
         })
         
