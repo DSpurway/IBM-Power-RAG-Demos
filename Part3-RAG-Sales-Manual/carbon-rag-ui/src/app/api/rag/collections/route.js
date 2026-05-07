@@ -7,7 +7,7 @@
 export async function GET(request) {
   try {
     // Use internal OpenShift service name - no FQDN needed!
-    const backendUrl = process.env.RAG_BACKEND_URL || 'http://rag-backend-opensearch:8080';
+    const backendUrl = process.env.RAG_BACKEND_URL || 'http://rag-backend:8080';
     
     console.log(`[Collections API] Fetching from: ${backendUrl}/api/collections`);
     

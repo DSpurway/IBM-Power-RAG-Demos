@@ -5,7 +5,7 @@
 
 export async function GET(request) {
   try {
-    const backendUrl = process.env.RAG_BACKEND_URL || 'http://rag-backend-opensearch:8080';
+    const backendUrl = process.env.RAG_BACKEND_URL || 'http://rag-backend:8080';
     
     const response = await fetch(`${backendUrl}/api/bulk-ingestion-status`, {
       method: 'GET',

@@ -9,7 +9,7 @@ export async function POST(request) {
     const body = await request.json();
     
     // Use internal OpenShift service name - no FQDN needed!
-    const backendUrl = process.env.RAG_BACKEND_URL || 'http://rag-backend-opensearch:8080';
+    const backendUrl = process.env.RAG_BACKEND_URL || 'http://rag-backend:8080';
     
     console.log(`[Load PDF API] Fetching from: ${backendUrl}/api/load-pdf`);
     console.log(`[Load PDF API] Request body:`, body);
