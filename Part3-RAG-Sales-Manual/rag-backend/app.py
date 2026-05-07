@@ -253,22 +253,42 @@ def generate_chunk_id(doc_id, page_content):
 
 @app.route('/api/collections', methods=['GET'])
 def list_collections():
-    """List all collections (OpenSearch indices)"""
+    """List all collections (OpenSearch indices) with MTM-based reverse mapping"""
     try:
         client = get_opensearch_client()
         indices = client.indices.get(index=f"{OPENSEARCH_DB_PREFIX}_*")
         
-        # Extract collection names from index names
-        collection_names = []
-        for index_name in indices.keys():
-            # Remove prefix and hash to get original name (we'll just use the index name)
-            collection_names.append(index_name)
+        # Build a reverse mapping: try to match hashed index names to known MTM-based collection names
+        # For IBM Power servers, collection names are based on MTM: mtm_9080_heu, mtm_9009_42a, etc.
+        known_mtms = [
+            # POWER11
+            "9080-HEU", "9043-MRU", "9824-42A", "9824-22A",
+            # POWER10
+            "9080-HEX", "9043-MRX", "9105-42A", "9105-22A",
+            "9105-41B", "9028-21B", "9786-42H", "9786-22H",
+            # POWER9
+            "9080-M9S", "9040-MR9", "9009-42A", "9009-42G",
+            "9009-22A", "9009-22G", "9009-41A", "9009-41G",
+            "9223-42S", "9223-22S", "9183-22X", "9008-22L",
+            "9006-22P", "9006-12P"
+        ]
         
-        logger.info(f"Found collections: {collection_names}")
+        collections_map = {}
+        index_names = list(indices.keys())
+        
+        # Try to match each known MTM to its hashed index
+        for mtm in known_mtms:
+            collection_name = f"mtm_{mtm.lower().replace('-', '_')}"
+            expected_index = _generate_index_name(collection_name)
+            if expected_index in index_names:
+                collections_map[mtm] = expected_index
+        
+        logger.info(f"Found {len(collections_map)} indexed MTMs: {list(collections_map.keys())}")
         
         return jsonify({
             'success': True,
-            'collections': collection_names
+            'collections': index_names,  # Keep for backward compatibility
+            'collections_map': collections_map  # New: MTM -> index_name mapping
         })
     except Exception as e:
         logger.error(f"Error listing collections: {e}")
@@ -1006,60 +1026,25 @@ def ingest_sales_manual():
     """
     Trigger scraping and ingestion of a single IBM Power server Sales Manual
     Calls the Windows scraper service and ingests the results
+    Uses MTM (Machine Type-Model) as the unique identifier for collections
     """
     try:
         data = request.get_json()
-        server_model = data.get('server_model')
-        server_name = data.get('server_name')
+        mtm = data.get('mtm')  # e.g., "9080-HEU", "9009-42A"
+        server_model = data.get('server_model')  # e.g., "E1180", "S924"
+        server_name = data.get('server_name')  # e.g., "IBM Power E1180"
         processor = data.get('processor', 'POWER')
+        sales_manual_url = data.get('url')  # Sales manual URL
         
-        if not server_model:
-            return jsonify({'error': 'server_model is required'}), 400
+        if not mtm:
+            return jsonify({'error': 'mtm is required'}), 400
+        if not sales_manual_url:
+            return jsonify({'error': 'url is required'}), 400
         
-        logger.info(f"Starting Sales Manual ingestion for {server_model} ({server_name})")
+        logger.info(f"Starting Sales Manual ingestion for MTM {mtm} ({server_name})")
         
         # Update bulk ingestion state
-        bulk_ingestion_state['current_server'] = server_model
-        
-        # Map server model to Sales Manual URL
-        server_urls = {
-            'E1180': 'https://www.ibm.com/docs/en/announcements/family-908005-power-e1180-enterprise-server-9080-heu',
-            'E1150': 'https://www.ibm.com/docs/en/announcements/family-904302-power-e1150-enterprise-midrange-technology-based-server-9043-mru',
-            'S1124': 'https://www.ibm.com/docs/en/announcements/family-982402-power-s1124-9824-42a',
-            'S1122': 'https://www.ibm.com/docs/en/announcements/family-982401-power-s1122-9824-22a',
-            'E1080': 'https://www.ibm.com/docs/en/announcements/power-e1080-enterprise-server',
-            'E1050': 'https://www.ibm.com/docs/en/announcements/power-e1050-enterprise-midrange-technology-based-server',
-            'S1024': 'https://www.ibm.com/docs/en/announcements/power-s1024-9105-42a',
-            'S1022': 'https://www.ibm.com/docs/en/announcements/power-s1022-9105-22a',
-            'S1014': 'https://www.ibm.com/docs/en/announcements/power-s1014-9105-41b',
-            'S1012': 'https://www.ibm.com/docs/en/announcements/family-9028-01-power-s1012',
-            'L1024': 'https://www.ibm.com/docs/en/announcements/power-l1024-9786-42h',
-            'L1022': 'https://www.ibm.com/docs/en/announcements/power-l1022-9786-22h',
-            'E980': 'https://www.ibm.com/docs/en/announcements/power-system-e980-9080-m9s',
-            'E950': 'https://www.ibm.com/docs/en/announcements/power-system-e950-9040-mr9',
-            'S924': 'https://www.ibm.com/docs/en/announcements/power-system-s924-9009-42a',
-            'S924-G': 'https://www.ibm.com/docs/en/announcements/power-system-s924-9009-42g',
-            'S922': 'https://www.ibm.com/docs/en/announcements/power-system-s922-9009-22a',
-            'S922-G': 'https://www.ibm.com/docs/en/announcements/power-system-s922-9009-22g',
-            'S914': 'https://www.ibm.com/docs/en/announcements/power-system-s914-9009-41a',
-            'S914-G': 'https://www.ibm.com/docs/en/announcements/power-system-s914-9009-41g-2023-10-24',
-            'H924': 'https://www.ibm.com/docs/en/announcements/power-system-h924-9223-42s-2023-10-24',
-            'H922': 'https://www.ibm.com/docs/en/announcements/power-system-h922-9223-22s-2023-10-24',
-            'IC922': 'https://www.ibm.com/docs/en/announcements/power-system-ic922-9183-22x-2021-12-14',
-            'L922': 'https://www.ibm.com/docs/en/announcements/power-system-l922-9008-22l',
-            'LC922': 'https://www.ibm.com/docs/en/announcements/power-system-lc922-9006-22p',
-            'LC921': 'https://www.ibm.com/docs/en/announcements/power-systems-lc921-9006-12p',
-        }
-        
-        sales_manual_url = server_urls.get(server_model)
-        if not sales_manual_url:
-            error_msg = f"No Sales Manual URL found for server model: {server_model}"
-            logger.error(error_msg)
-            bulk_ingestion_state['failed'].append({
-                'server': server_model,
-                'error': error_msg
-            })
-            return jsonify({'error': error_msg}), 404
+        bulk_ingestion_state['current_server'] = f"{server_model} ({mtm})"
         
         # Call Windows scraper service
         # The scraper is running on the Windows laptop
@@ -1079,20 +1064,20 @@ def ingest_sales_manual():
             
             if not scraper_data.get('success'):
                 error_msg = scraper_data.get('error', 'Scraping failed')
-                logger.error(f"Scraper failed for {server_model}: {error_msg}")
+                logger.error(f"Scraper failed for MTM {mtm}: {error_msg}")
                 bulk_ingestion_state['failed'].append({
-                    'server': server_model,
+                    'server': mtm,
                     'error': error_msg
                 })
                 return jsonify({'error': error_msg}), 500
             
-            logger.info(f"Scraping successful for {server_model}, got {scraper_data.get('sections_count', 0)} sections")
+            logger.info(f"Scraping successful for MTM {mtm}, got {scraper_data.get('sections_count', 0)} sections")
             
         except requests.exceptions.Timeout:
-            error_msg = f"Scraper timeout for {server_model}"
+            error_msg = f"Scraper timeout for MTM {mtm}"
             logger.error(error_msg)
             bulk_ingestion_state['failed'].append({
-                'server': server_model,
+                'server': mtm,
                 'error': 'Timeout'
             })
             return jsonify({'error': error_msg}), 504
@@ -1101,14 +1086,14 @@ def ingest_sales_manual():
             error_msg = f"Failed to call scraper: {str(e)}"
             logger.error(error_msg)
             bulk_ingestion_state['failed'].append({
-                'server': server_model,
+                'server': mtm,
                 'error': str(e)
             })
             return jsonify({'error': error_msg}), 500
         
         # Now ingest the scraped content
-        # Collection name: power_e1180, power_e1050, etc.
-        collection_name = f"power_{server_model.lower().replace('-', '_')}"
+        # Collection name based on MTM: mtm_9080_heu, mtm_9009_42a, etc.
+        collection_name = f"mtm_{mtm.lower().replace('-', '_')}"
         
         logger.info(f"Ingesting scraped content into collection: {collection_name}")
         
@@ -1118,10 +1103,11 @@ def ingest_sales_manual():
         transformed_data = {
             'success': True,
             'url': sales_manual_url,
-            'page_title': f"IBM Power {server_model} Sales Manual",
+            'page_title': f"{server_name} Sales Manual",
             'server_model': server_model,
+            'mtm': mtm,
             'sections': [{
-                'title': f"IBM Power {server_model} Documentation",
+                'title': f"{server_name} Documentation",
                 'content': scraper_data.get('full_text', ''),
                 'level': 1
             }],
@@ -1137,11 +1123,12 @@ def ingest_sales_manual():
         
         if ingest_response.status_code == 200:
             ingest_data = ingest_response.json()
-            logger.info(f"Successfully ingested {server_model}: {ingest_data.get('indexed', 0)} documents")
-            bulk_ingestion_state['completed'].append(server_model)
+            logger.info(f"Successfully ingested MTM {mtm}: {ingest_data.get('indexed', 0)} documents")
+            bulk_ingestion_state['completed'].append(mtm)
             
             return jsonify({
                 'success': True,
+                'mtm': mtm,
                 'server_model': server_model,
                 'collection': collection_name,
                 'indexed': ingest_data.get('indexed', 0),
@@ -1151,7 +1138,7 @@ def ingest_sales_manual():
             error_msg = f"Ingestion failed: {ingest_response.text}"
             logger.error(error_msg)
             bulk_ingestion_state['failed'].append({
-                'server': server_model,
+                'server': mtm,
                 'error': 'Ingestion failed'
             })
             return jsonify({'error': error_msg}), 500
@@ -1159,7 +1146,7 @@ def ingest_sales_manual():
     except Exception as e:
         logger.error(f"Error in ingest_sales_manual: {e}")
         bulk_ingestion_state['failed'].append({
-            'server': server_model if 'server_model' in locals() else 'unknown',
+            'server': mtm if 'mtm' in locals() else 'unknown',
             'error': str(e)
         })
         return jsonify({'error': str(e)}), 500
@@ -1226,36 +1213,41 @@ def start_bulk_ingestion():
     """
     Start bulk ingestion of all servers in a background thread
     Returns immediately and processes servers asynchronously
+    Uses MTM (Machine Type-Model) as unique identifier
     """
     try:
-        # Server list in correct order (Power11 -> Power10 -> Power9, largest first)
+        # Server list with MTM and URLs - ordered by processor generation (Power11 -> Power10 -> Power9)
+        # Within each generation: Enterprise first, then Scale-out, then others (largest to smallest)
         servers = [
-            {"model": "E1180", "name": "IBM Power E1180", "processor": "POWER11"},
-            {"model": "E1150", "name": "IBM Power E1150", "processor": "POWER11"},
-            {"model": "S1124", "name": "IBM Power S1124", "processor": "POWER11"},
-            {"model": "S1122", "name": "IBM Power S1122", "processor": "POWER11"},
-            {"model": "E1080", "name": "IBM Power E1080", "processor": "POWER10"},
-            {"model": "E1050", "name": "IBM Power E1050", "processor": "POWER10"},
-            {"model": "S1024", "name": "IBM Power S1024", "processor": "POWER10"},
-            {"model": "S1022", "name": "IBM Power S1022", "processor": "POWER10"},
-            {"model": "S1014", "name": "IBM Power S1014", "processor": "POWER10"},
-            {"model": "S1012", "name": "IBM Power S1012", "processor": "POWER10"},
-            {"model": "L1024", "name": "IBM Power L1024", "processor": "POWER10"},
-            {"model": "L1022", "name": "IBM Power L1022", "processor": "POWER10"},
-            {"model": "E980", "name": "IBM Power System E980", "processor": "POWER9"},
-            {"model": "E950", "name": "IBM Power System E950", "processor": "POWER9"},
-            {"model": "S924", "name": "IBM Power System S924", "processor": "POWER9"},
-            {"model": "S924-G", "name": "IBM Power System S924", "processor": "POWER9"},
-            {"model": "S922", "name": "IBM Power System S922", "processor": "POWER9"},
-            {"model": "S922-G", "name": "IBM Power System S922", "processor": "POWER9"},
-            {"model": "S914", "name": "IBM Power System S914", "processor": "POWER9"},
-            {"model": "S914-G", "name": "IBM Power System S914", "processor": "POWER9"},
-            {"model": "H924", "name": "IBM Power System H924", "processor": "POWER9"},
-            {"model": "H922", "name": "IBM Power System H922", "processor": "POWER9"},
-            {"model": "IC922", "name": "IBM Power System IC922", "processor": "POWER9"},
-            {"model": "L922", "name": "IBM Power System L922", "processor": "POWER9"},
-            {"model": "LC922", "name": "IBM Power System LC922", "processor": "POWER9"},
-            {"model": "LC921", "name": "IBM Power System LC921", "processor": "POWER9"}
+            # POWER11
+            {"mtm": "9080-HEU", "model": "E1180", "name": "IBM Power E1180", "processor": "POWER11", "url": "https://www.ibm.com/docs/en/announcements/family-908005-power-e1180-enterprise-server-9080-heu"},
+            {"mtm": "9043-MRU", "model": "E1150", "name": "IBM Power E1150", "processor": "POWER11", "url": "https://www.ibm.com/docs/en/announcements/family-904302-power-e1150-enterprise-midrange-technology-based-server-9043-mru"},
+            {"mtm": "9824-42A", "model": "S1124", "name": "IBM Power S1124", "processor": "POWER11", "url": "https://www.ibm.com/docs/en/announcements/family-982402-power-s1124-9824-42a"},
+            {"mtm": "9824-22A", "model": "S1122", "name": "IBM Power S1122", "processor": "POWER11", "url": "https://www.ibm.com/docs/en/announcements/family-982401-power-s1122-9824-22a"},
+            # POWER10
+            {"mtm": "9080-HEX", "model": "E1080", "name": "IBM Power E1080", "processor": "POWER10", "url": "https://www.ibm.com/docs/en/announcements/power-e1080-enterprise-server"},
+            {"mtm": "9043-MRX", "model": "E1050", "name": "IBM Power E1050", "processor": "POWER10", "url": "https://www.ibm.com/docs/en/announcements/power-e1050-enterprise-midrange-technology-based-server"},
+            {"mtm": "9105-42A", "model": "S1024", "name": "IBM Power S1024", "processor": "POWER10", "url": "https://www.ibm.com/docs/en/announcements/power-s1024-9105-42a"},
+            {"mtm": "9105-22A", "model": "S1022", "name": "IBM Power S1022", "processor": "POWER10", "url": "https://www.ibm.com/docs/en/announcements/power-s1022-9105-22a"},
+            {"mtm": "9105-41B", "model": "S1014", "name": "IBM Power S1014", "processor": "POWER10", "url": "https://www.ibm.com/docs/en/announcements/power-s1014-9105-41b"},
+            {"mtm": "9028-21B", "model": "S1012", "name": "IBM Power S1012", "processor": "POWER10", "url": "https://www.ibm.com/docs/en/announcements/family-9028-01-power-s1012"},
+            {"mtm": "9786-42H", "model": "L1024", "name": "IBM Power L1024", "processor": "POWER10", "url": "https://www.ibm.com/docs/en/announcements/power-l1024-9786-42h"},
+            {"mtm": "9786-22H", "model": "L1022", "name": "IBM Power L1022", "processor": "POWER10", "url": "https://www.ibm.com/docs/en/announcements/power-l1022-9786-22h"},
+            # POWER9
+            {"mtm": "9080-M9S", "model": "E980", "name": "IBM Power System E980", "processor": "POWER9", "url": "https://www.ibm.com/docs/en/announcements/power-system-e980-9080-m9s"},
+            {"mtm": "9040-MR9", "model": "E950", "name": "IBM Power System E950", "processor": "POWER9", "url": "https://www.ibm.com/docs/en/announcements/power-system-e950-9040-mr9"},
+            {"mtm": "9009-42A", "model": "S924", "name": "IBM Power System S924", "processor": "POWER9", "url": "https://www.ibm.com/docs/en/announcements/power-system-s924-9009-42a"},
+            {"mtm": "9009-42G", "model": "S924-G", "name": "IBM Power System S924", "processor": "POWER9", "url": "https://www.ibm.com/docs/en/announcements/power-system-s924-9009-42g"},
+            {"mtm": "9009-22A", "model": "S922", "name": "IBM Power System S922", "processor": "POWER9", "url": "https://www.ibm.com/docs/en/announcements/power-system-s922-9009-22a"},
+            {"mtm": "9009-22G", "model": "S922-G", "name": "IBM Power System S922", "processor": "POWER9", "url": "https://www.ibm.com/docs/en/announcements/power-system-s922-9009-22g"},
+            {"mtm": "9009-41A", "model": "S914", "name": "IBM Power System S914", "processor": "POWER9", "url": "https://www.ibm.com/docs/en/announcements/power-system-s914-9009-41a"},
+            {"mtm": "9009-41G", "model": "S914-G", "name": "IBM Power System S914", "processor": "POWER9", "url": "https://www.ibm.com/docs/en/announcements/power-system-s914-9009-41g-2023-10-24"},
+            {"mtm": "9223-42S", "model": "H924", "name": "IBM Power System H924", "processor": "POWER9", "url": "https://www.ibm.com/docs/en/announcements/power-system-h924-9223-42s-2023-10-24"},
+            {"mtm": "9223-22S", "model": "H922", "name": "IBM Power System H922", "processor": "POWER9", "url": "https://www.ibm.com/docs/en/announcements/power-system-h922-9223-22s-2023-10-24"},
+            {"mtm": "9183-22X", "model": "IC922", "name": "IBM Power System IC922", "processor": "POWER9", "url": "https://www.ibm.com/docs/en/announcements/power-system-ic922-9183-22x-2021-12-14"},
+            {"mtm": "9008-22L", "model": "L922", "name": "IBM Power System L922", "processor": "POWER9", "url": "https://www.ibm.com/docs/en/announcements/power-system-l922-9008-22l"},
+            {"mtm": "9006-22P", "model": "LC922", "name": "IBM Power System LC922", "processor": "POWER9", "url": "https://www.ibm.com/docs/en/announcements/power-system-lc922-9006-22p"},
+            {"mtm": "9006-12P", "model": "LC921", "name": "IBM Power System LC921", "processor": "POWER9", "url": "https://www.ibm.com/docs/en/announcements/power-systems-lc921-9006-12p"}
         ]
         
         # Initialize state
@@ -1270,18 +1262,19 @@ def start_bulk_ingestion():
         def process_servers():
             for server in servers:
                 try:
-                    bulk_ingestion_state['current_server'] = server['model']
-                    logger.info(f"[Bulk Ingestion] Processing {server['model']}")
+                    bulk_ingestion_state['current_server'] = f"{server['model']} ({server['mtm']})"
+                    logger.info(f"[Bulk Ingestion] Processing MTM {server['mtm']} - {server['model']}")
                     
-                    # Call the ingest-sales-manual endpoint internally
-                    # This simulates what the UI was doing, but server-side
+                    # Call the ingest-sales-manual endpoint internally with MTM-based parameters
                     with app.test_request_context(
                         '/api/ingest-sales-manual',
                         method='POST',
                         json={
+                            'mtm': server['mtm'],
                             'server_model': server['model'],
                             'server_name': server['name'],
-                            'processor': server['processor']
+                            'processor': server['processor'],
+                            'url': server['url']
                         }
                     ):
                         response = ingest_sales_manual()

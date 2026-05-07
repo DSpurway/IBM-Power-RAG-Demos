@@ -102,25 +102,26 @@ export default function SalesManualPage() {
     setError('');
     
     try {
-      // Get collections from backend
+      // Get collections from backend (now returns MTM-based collection metadata)
       const response = await fetch('/api/rag/collections');
       if (!response.ok) throw new Error('Failed to load collections');
       
       const data = await response.json();
-      const collections = data.collections || [];
+      const collectionsMap = data.collections_map || {};
       
       // Match servers with their indexed status
-      // Each server has its own collection: power_e1180, power_e1150, etc.
+      // Backend now returns a map of MTM -> index_name
       const serversWithStatus = IBM_POWER_SERVERS.map(server => {
-        const collectionName = `power_${server.model.toLowerCase().replace(/-/g, '_')}`;
-        const isIndexed = collections.includes(collectionName);
+        const isIndexed = server.mtm in collectionsMap;
+        const collectionName = `mtm_${server.mtm.toLowerCase().replace(/-/g, '_')}`;
         
         return {
           ...server,
           collectionName: collectionName,
+          indexName: isIndexed ? collectionsMap[server.mtm] : null,
           status: isIndexed ? 'indexed' : 'not-indexed',
           lastUpdated: isIndexed ? new Date().toISOString() : null,
-          contentHash: null, // Will be populated when we implement hash checking
+          contentHash: null,
           documentCount: isIndexed ? '?' : 0
         };
       });
@@ -132,7 +133,7 @@ export default function SalesManualPage() {
       // Initialize with default status
       setServers(IBM_POWER_SERVERS.map(s => ({
         ...s,
-        collectionName: `power_${s.model.toLowerCase().replace(/-/g, '_')}`,
+        collectionName: `mtm_${s.mtm.toLowerCase().replace(/-/g, '_')}`,
         status: 'unknown',
         lastUpdated: null,
         contentHash: null,
@@ -209,30 +210,31 @@ export default function SalesManualPage() {
 
   const handleIngestServer = async (server) => {
     setLoading(true);
-    setError(`Ingesting ${server.model}... This may take 5-10 minutes.`);
+    setError(`Ingesting ${server.mtm} (${server.model})... This may take 5-10 minutes.`);
     
     try {
-      // Call scraper endpoint (would need to be implemented)
+      // Call scraper endpoint with MTM-based parameters
       const response = await fetch('/api/rag/ingest-sales-manual', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          url: server.url,
-          model: server.model,
-          name: server.name,
-          mtm: server.mtm
+          mtm: server.mtm,
+          server_model: server.model,
+          server_name: server.name,
+          processor: server.processor,
+          url: server.url
         })
       });
       
       if (!response.ok) throw new Error('Failed to ingest server documentation');
       
       const data = await response.json();
-      setError(`${server.model} ingested successfully! ${data.documentCount} documents indexed.`);
+      setError(`${server.mtm} ingested successfully! ${data.indexed || 0} documents indexed.`);
       
       // Reload server status
       await loadServerStatus();
     } catch (err) {
-      setError(`Error ingesting ${server.model}: ${err.message}`);
+      setError(`Error ingesting ${server.mtm}: ${err.message}`);
     } finally {
       setLoading(false);
     }
