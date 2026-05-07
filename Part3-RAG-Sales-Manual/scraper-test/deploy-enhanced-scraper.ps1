@@ -57,6 +57,24 @@ Write-Host "Targeting region: $Region" -ForegroundColor Cyan
 ibmcloud target -r $Region
 Write-Host ""
 
+# Get or set resource group
+Write-Host "Checking resource group..." -ForegroundColor Cyan
+if ($ResourceGroup -eq "") {
+    # List available resource groups
+    Write-Host "  Available resource groups:" -ForegroundColor Yellow
+    ibmcloud resource groups
+    Write-Host ""
+    $ResourceGroup = Read-Host "  Enter resource group name (or press Enter for 'Default')"
+    if ($ResourceGroup -eq "") {
+        $ResourceGroup = "Default"
+    }
+}
+
+Write-Host "  Targeting resource group: $ResourceGroup" -ForegroundColor Cyan
+ibmcloud target -g $ResourceGroup
+Write-Host "  Resource group targeted" -ForegroundColor Green
+Write-Host ""
+
 # Select or create project
 Write-Host "Selecting Code Engine project: $ProjectName" -ForegroundColor Cyan
 $projectExists = ibmcloud ce project list 2>&1 | Select-String $ProjectName
