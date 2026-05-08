@@ -37,7 +37,7 @@ class WatsonAssistantService:
         """
         self.api_key = api_key or os.environ.get('WATSON_ASSISTANT_API_KEY')
         self.url = url or os.environ.get('WATSON_ASSISTANT_URL')
-        self.assistant_id = assistant_id or os.environ.get('WATSON_ASSISTANT_ID')
+        self.assistant_id = assistant_id or os.environ.get('WATSON_ASSISTANT_ID') or os.environ.get('WATSON_ASSISTANT_ASSISTANT_ID')
         self.version = version
         
         # Session management
