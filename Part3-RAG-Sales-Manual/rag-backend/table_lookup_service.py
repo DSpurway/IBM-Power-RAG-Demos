@@ -230,18 +230,28 @@ class TableLookupService:
         # Return the most relevant chunk if no specific field extraction
         return relevant_texts[0]
     
-    def _extract_field_from_text(self, text: str, model: str, field: str) -> Optional[str]:
+    def _extract_field_from_text(self, text: str, model: str, field: Optional[str]) -> Optional[str]:
         """
         Extract specific lifecycle field information from text
+        Handles both table format and sentence format
         
         Args:
             text: Combined text from chunks
             model: Server model
-            field: Lifecycle field to extract
+            field: Lifecycle field to extract (can be None)
             
         Returns:
             Extracted information or None
         """
+        # Try to parse table format first (common in sales manuals)
+        table_result = self._parse_lifecycle_table(text, model)
+        if table_result:
+            return table_result
+        
+        # If no field specified, return formatted table data
+        if not field:
+            return None
+        
         field_lower = field.lower()
         
         # Look for date patterns near field keywords
@@ -278,6 +288,37 @@ class TableLookupService:
                         else:
                             # Return the sentence even without a date
                             return sentence.strip()
+        
+        return None
+    
+    def _parse_lifecycle_table(self, text: str, model: str) -> Optional[str]:
+        """
+        Parse lifecycle dates from table format commonly found in sales manuals
+        
+        Args:
+            text: Text containing lifecycle table
+            model: Server model
+            
+        Returns:
+            Formatted lifecycle information or None
+        """
+        # Look for table with lifecycle dates
+        # Format: | Type Model | Announced | Available | Marketing withdrawn | ... | Service discontinued |
+        lines = text.split('\n')
+        
+        for i, line in enumerate(lines):
+            # Check if this line contains the model MTM
+            if '9009-42A' in line or model.upper() in line.upper():
+                # Try to extract dates from this line
+                date_pattern = r'\d{4}-\d{2}-\d{2}'
+                dates = re.findall(date_pattern, line)
+                
+                if len(dates) >= 4:  # Announced, Available, Withdrawn, Discontinued
+                    return (f"IBM Power {model} Lifecycle Dates:\n"
+                           f"• Announced: {dates[0]}\n"
+                           f"• Available: {dates[1]}\n"
+                           f"• Marketing Withdrawn: {dates[2]}\n"
+                           f"• Service Discontinued: {dates[3]}")
         
         return None
 

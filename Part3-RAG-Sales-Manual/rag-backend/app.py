@@ -986,6 +986,24 @@ def generate():
             if not server_model:
                 logger.warning("Could not extract server model from query")
                 # Fall through to LLM if we can't extract the model
+            elif not lifecycle_field:
+                # Watson detected Check_Date intent but didn't extract which date field
+                # Ask user to clarify which lifecycle date they want
+                logger.info(f"Check_Date intent detected for {server_model} but no specific lifecycle field - requesting clarification")
+                return jsonify({
+                    'success': True,
+                    'content': f"I understand you want to check a lifecycle date for the IBM Power {server_model}. Which date would you like to know about?",
+                    'query_type': 'clarification_needed',
+                    'server_model': server_model,
+                    'clarification_options': [
+                        {'label': 'Announcement Date', 'value': 'announced'},
+                        {'label': 'Availability Date', 'value': 'available'},
+                        {'label': 'Marketing Withdrawal Date', 'value': 'withdrawn'},
+                        {'label': 'Service Discontinuation Date', 'value': 'end_of_support'},
+                        {'label': 'Show All Lifecycle Dates', 'value': 'all'}
+                    ],
+                    'source': 'clarification'
+                })
             else:
                 result = table_service.query(
                     query=prompt,
