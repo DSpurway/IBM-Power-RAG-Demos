@@ -71,18 +71,18 @@ class TableLookupService:
         logger.info(f"Searching OpenSearch for: {search_query}")
         
         try:
-            # Search OpenSearch for relevant chunks
-            # Use same hash-based naming as app.py _generate_index_name()
-            hash_part = hashlib.md5(collection_name.encode()).hexdigest()
-            index_name = f"{self.index_prefix}_{hash_part}"
+            # Search across ALL rag_* indices since bulk ingestion may have used different collection names
+            # This is more flexible and works regardless of the collection naming scheme used
+            index_pattern = f"{self.index_prefix}_*"
             
-            logger.info(f"Looking for index: {index_name} (collection: {collection_name}, model: {model})")
+            logger.info(f"Searching across all indices: {index_pattern} (model: {model})")
             
-            if not self.client.indices.exists(index=index_name):
+            # Check if any indices exist
+            if not self.client.indices.exists(index=index_pattern):
                 return {
                     'success': False,
-                    'error': f'Collection {collection_name} does not exist for {model}',
-                    'answer': f'Sales manual data not yet loaded for {model}. Please wait for bulk ingestion to complete.'
+                    'error': f'No sales manual data loaded yet',
+                    'answer': f'Sales manual data not yet loaded. Please wait for bulk ingestion to complete.'
                 }
             
             # Use hybrid search: text match + vector similarity
@@ -118,7 +118,7 @@ class TableLookupService:
                 }
             }
             
-            response = self.client.search(index=index_name, body=search_body)
+            response = self.client.search(index=index_pattern, body=search_body)
             hits = response['hits']['hits']
             
             if not hits:
