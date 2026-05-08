@@ -982,6 +982,22 @@ def generate():
             
             server_model = query_intent.get('server_model')
             lifecycle_field = query_intent.get('lifecycle_field')
+            mtm_options = query_intent.get('mtm_options', [])
+            
+            # Check if Watson is asking for MTM clarification (A vs G model, etc.)
+            if mtm_options:
+                logger.info(f"Watson requesting MTM clarification for {server_model}: {len(mtm_options)} options")
+                return jsonify({
+                    'success': True,
+                    'content': f"I found multiple variants of the IBM Power {server_model}. Which one are you interested in?",
+                    'query_type': 'mtm_clarification_needed',
+                    'server_model': server_model,
+                    'clarification_options': [
+                        {'label': opt['label'], 'value': opt['mtm']}
+                        for opt in mtm_options
+                    ],
+                    'source': 'watson_assistant'
+                })
             
             if not server_model:
                 logger.warning("Could not extract server model from query")
@@ -993,7 +1009,7 @@ def generate():
                 return jsonify({
                     'success': True,
                     'content': f"I understand you want to check a lifecycle date for the IBM Power {server_model}. Which date would you like to know about?",
-                    'query_type': 'clarification_needed',
+                    'query_type': 'lifecycle_clarification_needed',
                     'server_model': server_model,
                     'clarification_options': [
                         {'label': 'Announcement Date', 'value': 'announced'},
