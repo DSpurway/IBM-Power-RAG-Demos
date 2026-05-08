@@ -35,6 +35,9 @@ lxml==5.1.0
 # HTTP Client
 requests>=2.32.0
 
+# Watson Assistant (optional - for enhanced NLP)
+ibm-watson>=8.0.0
+
 # Utilities
 python-dotenv==1.0.0
 numpy>=1.24.0
