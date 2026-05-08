@@ -1,6 +1,7 @@
 """
 Table Lookup Service for Direct Data Retrieval from OpenSearch
 Handles queries about product lifecycle dates by searching sales manual chunks
+Uses MTM-based collections for server-specific data
 """
 
 import logging
@@ -8,6 +9,7 @@ import re
 import hashlib
 from typing import Dict, Optional, List, Any
 from datetime import datetime
+from server_mtm_mapper import get_collection_name_for_model
 
 logger = logging.getLogger(__name__)
 
@@ -30,14 +32,14 @@ class TableLookupService:
         logger.info("TableLookupService initialized with OpenSearch backend")
     
     def lookup(self, server_model: str, field: Optional[str] = None,
-               collection_name: str = 'sales_manuals') -> Dict[str, Any]:
+               collection_name: str = None) -> Dict[str, Any]:
         """
         Look up lifecycle data for a server from OpenSearch
         
         Args:
             server_model: Server model (e.g., "E1180", "S924", "S1024")
             field: Specific field to retrieve (announced, available, withdrawn, end_of_support, etc.)
-            collection_name: OpenSearch collection to search
+            collection_name: OpenSearch collection to search (optional, will use MTM-based name if not provided)
             
         Returns:
             Dictionary with lookup results including answer from sales manual
@@ -52,6 +54,17 @@ class TableLookupService:
         # Normalize model name
         model = self._normalize_model(server_model)
         
+        # Get MTM-based collection name if not provided
+        if not collection_name:
+            collection_name = get_collection_name_for_model(model)
+            if not collection_name:
+                return {
+                    'success': False,
+                    'error': f'Unknown server model: {model}',
+                    'answer': f'No MTM mapping found for {model}'
+                }
+            logger.info(f"Using MTM-based collection: {collection_name}")
+        
         # Build search query for lifecycle information
         search_query = self._build_lifecycle_query(model, field)
         
@@ -63,13 +76,13 @@ class TableLookupService:
             hash_part = hashlib.md5(collection_name.encode()).hexdigest()
             index_name = f"{self.index_prefix}_{hash_part}"
             
-            logger.info(f"Looking for index: {index_name} (collection: {collection_name})")
+            logger.info(f"Looking for index: {index_name} (collection: {collection_name}, model: {model})")
             
             if not self.client.indices.exists(index=index_name):
                 return {
                     'success': False,
-                    'error': f'Collection {collection_name} does not exist',
-                    'answer': f'No data available for {model}'
+                    'error': f'Collection {collection_name} does not exist for {model}',
+                    'answer': f'Sales manual data not yet loaded for {model}. Please wait for bulk ingestion to complete.'
                 }
             
             # Use hybrid search: text match + vector similarity
