@@ -997,12 +997,13 @@ def generate():
                     logger.info(f"Table lookup successful for {server_model}")
                     return jsonify({
                         'success': True,
-                        'content': result['formatted_answer'],
+                        'content': result.get('answer', 'No answer found'),
                         'query_type': 'table_lookup',
                         'server_model': server_model,
                         'field': lifecycle_field,
                         'response_time_ms': result.get('response_time_ms', 10),
-                        'source': 'lifecycle_table'
+                        'source': 'sales_manual',
+                        'chunks_found': result.get('chunks_found', 0)
                     })
                 else:
                     logger.warning(f"Table lookup failed: {result.get('error')}")
