@@ -369,7 +369,7 @@ export default function SalesManualPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          collection_name: 'ibm_docs',
+          collection_name: 'sales_manuals',
           prompt: queryText,
           top_k: 3
         })
