@@ -5,6 +5,7 @@ Handles queries about product lifecycle dates by searching sales manual chunks
 
 import logging
 import re
+import hashlib
 from typing import Dict, Optional, List, Any
 from datetime import datetime
 
@@ -58,7 +59,11 @@ class TableLookupService:
         
         try:
             # Search OpenSearch for relevant chunks
-            index_name = f"{self.index_prefix}_{collection_name}"
+            # Use same hash-based naming as app.py _generate_index_name()
+            hash_part = hashlib.md5(collection_name.encode()).hexdigest()
+            index_name = f"{self.index_prefix}_{hash_part}"
+            
+            logger.info(f"Looking for index: {index_name} (collection: {collection_name})")
             
             if not self.client.indices.exists(index=index_name):
                 return {
