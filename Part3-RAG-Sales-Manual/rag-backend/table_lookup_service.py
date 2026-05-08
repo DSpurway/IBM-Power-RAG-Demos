@@ -85,35 +85,17 @@ class TableLookupService:
                     'answer': f'Sales manual data not yet loaded. Please wait for bulk ingestion to complete.'
                 }
             
-            # Use hybrid search: text match + vector similarity
-            query_vector = self.embeddings.embed_query(search_query)
-            
+            # Use text-only search when searching across multiple indices
+            # (script_score with vectors doesn't work well with wildcard patterns)
             search_body = {
                 "size": 10,  # Get top 10 chunks
                 "_source": ["text", "metadata"],
                 "query": {
-                    "bool": {
-                        "should": [
-                            # Text match for model name and lifecycle terms
-                            {
-                                "multi_match": {
-                                    "query": search_query,
-                                    "fields": ["text^2", "metadata.filename"],
-                                    "type": "best_fields"
-                                }
-                            },
-                            # Vector similarity
-                            {
-                                "script_score": {
-                                    "query": {"match_all": {}},
-                                    "script": {
-                                        "source": "cosineSimilarity(params.query_vector, 'embedding') + 1.0",
-                                        "params": {"query_vector": query_vector}
-                                    }
-                                }
-                            }
-                        ],
-                        "minimum_should_match": 1
+                    "multi_match": {
+                        "query": search_query,
+                        "fields": ["text^2", "metadata.filename"],
+                        "type": "best_fields",
+                        "operator": "or"
                     }
                 }
             }
