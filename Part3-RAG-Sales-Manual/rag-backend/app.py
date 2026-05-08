@@ -124,11 +124,17 @@ def get_query_classifier():
     return _query_classifier
 
 def get_table_lookup_service():
-    """Lazy load table lookup service"""
+    """Lazy load table lookup service with OpenSearch backend"""
     global _table_lookup_service
     if _table_lookup_service is None:
-        logger.info("Initializing table lookup service")
-        _table_lookup_service = TableLookupService()
+        logger.info("Initializing table lookup service with OpenSearch")
+        client = get_opensearch_client()
+        embeddings = get_embeddings()
+        _table_lookup_service = TableLookupService(
+            opensearch_client=client,
+            embeddings=embeddings,
+            index_prefix=OPENSEARCH_DB_PREFIX
+        )
         logger.info("Table lookup service initialized successfully")
     return _table_lookup_service
 
@@ -617,12 +623,22 @@ def search():
         
         # Step 2: Route based on classification
         if classification['query_type'] == QueryType.TABLE_LOOKUP:
-            # Direct table lookup - no LLM needed
+            # Direct table lookup from OpenSearch - no LLM generation needed
             table_service = get_table_lookup_service()
             result = table_service.lookup(
                 server_model=classification['entities'].get('server_model'),
-                field=classification['entities'].get('field')
+                field=classification['entities'].get('field'),
+                collection_name=collection_name
             )
+            
+            if not result.get('success'):
+                # If lookup fails, return error
+                return jsonify({
+                    'success': False,
+                    'error': result.get('error', 'Table lookup failed'),
+                    'query_type': 'table_lookup',
+                    'classification': classification
+                }), 404
             
             return jsonify({
                 'success': True,
@@ -630,10 +646,10 @@ def search():
                 'results': [{
                     'content': result['answer'],
                     'metadata': {
-                        'source': 'lifecycle_table',
+                        'source': result.get('source', 'sales_manual'),
                         'server_model': result.get('server_model'),
                         'field': result.get('field'),
-                        'confidence': result.get('confidence', 1.0)
+                        'chunks_found': result.get('chunks_found', 0)
                     },
                     'score': 1.0
                 }],
