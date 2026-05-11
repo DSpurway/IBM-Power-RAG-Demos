@@ -46,6 +46,7 @@ COPY docling_config.py .
 COPY token_utils.py .
 COPY docling_converter.py .
 COPY hierarchical_chunker.py .
+COPY sales_manual_chunker.py .
 COPY query_classifier.py .
 COPY watson_assistant_service.py .
 COPY table_lookup_service.py .
@@ -81,6 +82,7 @@ COPY --from=builder /app/docling_config.py .
 COPY --from=builder /app/token_utils.py .
 COPY --from=builder /app/docling_converter.py .
 COPY --from=builder /app/hierarchical_chunker.py .
+COPY --from=builder /app/sales_manual_chunker.py .
 COPY --from=builder /app/query_classifier.py .
 COPY --from=builder /app/watson_assistant_service.py .
 COPY --from=builder /app/table_lookup_service.py .
