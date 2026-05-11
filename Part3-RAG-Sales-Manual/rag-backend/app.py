@@ -1000,8 +1000,51 @@ def generate():
                 })
             
             if not server_model:
-                logger.warning("Could not extract server model from query")
-                # Fall through to LLM if we can't extract the model
+                # Watson detected lifecycle query but couldn't identify the server
+                # Ask user to clarify which server they're asking about
+                logger.info("Check_Date intent detected but no server model - requesting clarification")
+                
+                # Get list of available servers from our known MTM map
+                from server_mtm_mapper import SERVER_MTM_MAP
+                
+                # Group by processor generation for better UX
+                power11_servers = [(model, mtm) for model, mtm in SERVER_MTM_MAP.items() if model.startswith(('E11', 'S11'))]
+                power10_servers = [(model, mtm) for model, mtm in SERVER_MTM_MAP.items() if model.startswith(('E10', 'S10', 'L10'))]
+                power9_servers = [(model, mtm) for model, mtm in SERVER_MTM_MAP.items() if model.startswith(('E9', 'S9', 'H9', 'IC9', 'L9', 'LC9'))]
+                
+                clarification_options = []
+                
+                # Add POWER11 servers
+                for model, mtm in sorted(power11_servers):
+                    clarification_options.append({
+                        'label': f'IBM Power {model} ({mtm})',
+                        'value': model,
+                        'processor': 'POWER11'
+                    })
+                
+                # Add POWER10 servers
+                for model, mtm in sorted(power10_servers):
+                    clarification_options.append({
+                        'label': f'IBM Power {model} ({mtm})',
+                        'value': model,
+                        'processor': 'POWER10'
+                    })
+                
+                # Add POWER9 servers
+                for model, mtm in sorted(power9_servers):
+                    clarification_options.append({
+                        'label': f'IBM Power {model} ({mtm})',
+                        'value': model,
+                        'processor': 'POWER9'
+                    })
+                
+                return jsonify({
+                    'success': True,
+                    'content': f"I understand you're asking about a lifecycle date, but I couldn't identify which IBM Power server you're referring to. Which server are you interested in?",
+                    'query_type': 'server_clarification_needed',
+                    'clarification_options': clarification_options,
+                    'source': 'clarification'
+                })
             elif not lifecycle_field:
                 # Watson detected Check_Date intent but didn't extract which date field
                 # Ask user to clarify which lifecycle date they want

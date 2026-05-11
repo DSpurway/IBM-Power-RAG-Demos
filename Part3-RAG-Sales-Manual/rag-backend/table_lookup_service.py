@@ -227,8 +227,21 @@ class TableLookupService:
             if field_info:
                 return field_info
         
-        # Return the most relevant chunk if no specific field extraction
-        return relevant_texts[0]
+        # If no specific field extraction worked, try to parse table and return all dates
+        table_result = self._parse_lifecycle_table(combined_text, model, field)
+        if table_result:
+            return table_result
+        
+        # Last resort: return a cleaned version of the most relevant chunk
+        # Try to extract just the lifecycle table portion
+        first_text = relevant_texts[0]
+        # Look for lines with dates
+        lines = first_text.split('\n')
+        date_lines = [line for line in lines if re.search(r'\d{4}-\d{2}-\d{2}', line)]
+        if date_lines:
+            return '\n'.join(date_lines[:3])  # Return first 3 lines with dates
+        
+        return first_text[:500]  # Return first 500 chars as fallback
     
     def _extract_field_from_text(self, text: str, model: str, field: Optional[str]) -> Optional[str]:
         """
@@ -244,7 +257,7 @@ class TableLookupService:
             Extracted information or None
         """
         # Try to parse table format first (common in sales manuals)
-        table_result = self._parse_lifecycle_table(text, model)
+        table_result = self._parse_lifecycle_table(text, model, field)
         if table_result:
             return table_result
         
@@ -291,13 +304,14 @@ class TableLookupService:
         
         return None
     
-    def _parse_lifecycle_table(self, text: str, model: str) -> Optional[str]:
+    def _parse_lifecycle_table(self, text: str, model: str, field: Optional[str] = None) -> Optional[str]:
         """
         Parse lifecycle dates from table format commonly found in sales manuals
         
         Args:
             text: Text containing lifecycle table
             model: Server model
+            field: Specific field to extract (announced, available, withdrawn, end_of_support)
             
         Returns:
             Formatted lifecycle information or None
@@ -307,13 +321,26 @@ class TableLookupService:
         lines = text.split('\n')
         
         for i, line in enumerate(lines):
-            # Check if this line contains the model MTM
-            if '9009-42A' in line or model.upper() in line.upper():
+            # Check if this line contains the model or MTM (e.g., 9009-42A, 9009-42G)
+            if model.upper() in line.upper() or any(mtm in line for mtm in ['9009-42A', '9009-42G', '9009-22A', '9009-22G']):
                 # Try to extract dates from this line
                 date_pattern = r'\d{4}-\d{2}-\d{2}'
                 dates = re.findall(date_pattern, line)
                 
                 if len(dates) >= 4:  # Announced, Available, Withdrawn, Discontinued
+                    # If specific field requested, return just that date
+                    if field:
+                        field_lower = field.lower()
+                        if 'announce' in field_lower:
+                            return f"The IBM Power {model} was announced on {dates[0]}."
+                        elif 'available' in field_lower:
+                            return f"The IBM Power {model} became available on {dates[1]}."
+                        elif 'withdraw' in field_lower:
+                            return f"The IBM Power {model} was withdrawn from marketing on {dates[2]}."
+                        elif 'discontinue' in field_lower or 'end_of_support' in field_lower:
+                            return f"Support for the IBM Power {model} ended on {dates[3]}."
+                    
+                    # Return all dates if no specific field
                     return (f"IBM Power {model} Lifecycle Dates:\n"
                            f"• Announced: {dates[0]}\n"
                            f"• Available: {dates[1]}\n"

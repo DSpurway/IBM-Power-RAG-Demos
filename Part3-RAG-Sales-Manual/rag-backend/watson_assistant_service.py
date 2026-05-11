@@ -195,11 +195,19 @@ class WatsonAssistantService:
                         'eos': 'end_of_support',
                         'end of support': 'end_of_support',
                         'announcement': 'announced',
+                        'announced': 'announced',
                         'generally available': 'available',
                         'ga': 'available',
+                        'available': 'available',
                         'withdrawal': 'withdrawn',
+                        'withdrawn': 'withdrawn',
+                        'marketing withdrawal': 'withdrawn',
+                        'stop selling': 'withdrawn',
+                        'stop marketing': 'withdrawn',
                         'eol': 'end_of_support',
-                        'end of life': 'end_of_support'
+                        'end of life': 'end_of_support',
+                        'discontinued': 'end_of_support',
+                        'discontinuation': 'end_of_support'
                     }
                     
                     mapped_value = lifecycle_mapping.get(value)

@@ -198,7 +198,7 @@ class QueryClassifier:
             query: User query string
             
         Returns:
-            Dictionary with query_type, server_model, feature_code, etc.
+            Dictionary with query_type, server_model, feature_code, mtm_options, etc.
         """
         # Try Watson Assistant first
         if self.use_watson and self.watson_service:
@@ -213,43 +213,40 @@ class QueryClassifier:
                         'original_query': query,
                         'server_model': watson_entities.get('server_model'),
                         'mtm': watson_entities.get('mtm'),
+                        'mtm_options': watson_result.get('mtm_options', []),
                         'feature_code': None,
                         'lifecycle_field': watson_entities.get('lifecycle_field'),
                         'confidence': watson_result.get('confidence', 0),
-                        'source': 'watson_assistant'
+                        'source': 'watson_assistant',
+                        'needs_clarification': watson_result.get('needs_clarification', False)
                     }
                     
-                    # Fallback to regex if Watson didn't extract entities
-                    if not intent['server_model']:
-                        intent['server_model'] = self.extract_server_model(query)
-                    
-                    if not intent['lifecycle_field']:
-                        intent['lifecycle_field'] = self._extract_lifecycle_field(query)
+                    # Don't fallback to regex - let the system ask for clarification instead
+                    # This provides a better user experience than guessing
                     
                     logger.info(f"Watson intent extraction: {intent}")
                     return intent
             except Exception as e:
-                logger.warning(f"Watson intent extraction failed, using regex: {e}")
+                logger.warning(f"Watson intent extraction failed: {e}")
         
-        # Fallback to regex-based extraction
+        # If Watson is not available, detect query type but don't extract entities
+        # Let the system ask for clarification instead of using regex
         query_type = self.classify(query)
         
         intent = {
             'query_type': query_type.value,
             'original_query': query,
             'server_model': None,
+            'mtm': None,
+            'mtm_options': [],
             'feature_code': None,
             'lifecycle_field': None,
-            'source': 'regex'
+            'confidence': 0.5,
+            'source': 'regex_classification_only',
+            'needs_clarification': True  # Always need clarification without Watson
         }
         
-        if query_type == QueryType.TABLE_LOOKUP:
-            intent['server_model'] = self.extract_server_model(query)
-            intent['lifecycle_field'] = self._extract_lifecycle_field(query)
-        
-        elif query_type == QueryType.METADATA_LOOKUP:
-            intent['feature_code'] = self.extract_feature_code(query)
-        
+        logger.info(f"Regex classification (no entity extraction): {intent}")
         return intent
     
     def _extract_lifecycle_field(self, query: str) -> Optional[str]:
@@ -267,6 +264,8 @@ class QueryClassifier:
             return 'available'
         elif 'withdraw' in query_lower or 'withdrawal' in query_lower:
             return 'withdrawn'
+        elif 'stop selling' in query_lower or 'stop marketing' in query_lower:
+            return 'withdrawn'  # "stop selling" = marketing withdrawal
         elif 'discontinue' in query_lower or 'discontinuation' in query_lower:
             return 'discontinued'
         elif 'stop support' in query_lower or 'end support' in query_lower or 'end of support' in query_lower:
