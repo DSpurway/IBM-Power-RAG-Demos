@@ -32,7 +32,7 @@ class TableLookupService:
         logger.info("TableLookupService initialized with OpenSearch backend")
     
     def lookup(self, server_model: str, field: Optional[str] = None,
-               collection_name: str = None) -> Dict[str, Any]:
+               collection_name: str = None, server_mtm: Optional[str] = None) -> Dict[str, Any]:
         """
         Look up lifecycle data for a server from OpenSearch
         
@@ -40,6 +40,7 @@ class TableLookupService:
             server_model: Server model (e.g., "E1180", "S924", "S1024")
             field: Specific field to retrieve (announced, available, withdrawn, end_of_support, etc.)
             collection_name: OpenSearch collection to search (optional, will use MTM-based name if not provided)
+            server_mtm: Server MTM (e.g., "9009-42G") for precise table row matching
             
         Returns:
             Dictionary with lookup results including answer from sales manual
@@ -196,7 +197,7 @@ class TableLookupService:
         
         return ' '.join(query_parts)
     
-    def _extract_lifecycle_answer(self, hits: List[Dict], model: str, field: Optional[str]) -> str:
+    def _extract_lifecycle_answer(self, hits: List[Dict], model: str, field: Optional[str], server_mtm: Optional[str] = None) -> str:
         """
         Extract lifecycle answer from OpenSearch hits
         
@@ -204,6 +205,7 @@ class TableLookupService:
             hits: List of search hits from OpenSearch
             model: Server model
             field: Specific lifecycle field requested
+            server_mtm: Server MTM for precise table row matching
             
         Returns:
             Formatted answer string
@@ -304,48 +306,88 @@ class TableLookupService:
         
         return None
     
-    def _parse_lifecycle_table(self, text: str, model: str, field: Optional[str] = None) -> Optional[str]:
+    def _parse_lifecycle_table(self, text: str, model: str, field: Optional[str] = None, server_mtm: Optional[str] = None) -> Optional[str]:
         """
-        Parse lifecycle dates from table format commonly found in sales manuals
+        Parse lifecycle dates from table format in sales manuals
+        
+        Table format:
+        Type Model | Announced | Available | Marketing withdrawn | Support level changed | Service discontinued
+        9009-42A   | 2018-02-13| 2018-03-20| 2021-01-29         | 31 January 2026      | -
         
         Args:
             text: Text containing lifecycle table
             model: Server model
             field: Specific field to extract (announced, available, withdrawn, end_of_support)
+            server_mtm: Server MTM for precise row matching (e.g., "9009-42A")
             
         Returns:
             Formatted lifecycle information or None
         """
-        # Look for table with lifecycle dates
-        # Format: | Type Model | Announced | Available | Marketing withdrawn | ... | Service discontinued |
         lines = text.split('\n')
         
+        # Look for the "Product lifecycle dates" section
+        in_lifecycle_section = False
         for i, line in enumerate(lines):
-            # Check if this line contains the model or MTM (e.g., 9009-42A, 9009-42G)
-            if model.upper() in line.upper() or any(mtm in line for mtm in ['9009-42A', '9009-42G', '9009-22A', '9009-22G']):
-                # Try to extract dates from this line
-                date_pattern = r'\d{4}-\d{2}-\d{2}'
-                dates = re.findall(date_pattern, line)
+            if 'product lifecycle' in line.lower() or 'lifecycle dates' in line.lower():
+                in_lifecycle_section = True
+                logger.info("Found Product lifecycle dates section")
+                continue
+            
+            # If we're in the lifecycle section and find the MTM
+            if in_lifecycle_section and server_mtm and server_mtm in line:
+                logger.info(f"Found table row with MTM {server_mtm}: {line}")
                 
-                if len(dates) >= 4:  # Announced, Available, Withdrawn, Discontinued
+                # Split by | or multiple spaces to extract table cells
+                cells = [cell.strip() for cell in re.split(r'\||\s{2,}', line) if cell.strip()]
+                logger.info(f"Extracted cells: {cells}")
+                
+                # Expected format: [MTM, Announced, Available, Marketing withdrawn, Support level changed, Service discontinued]
+                # Or with leading/trailing pipes: ['', MTM, Announced, ...]
+                
+                # Find cells that look like dates or "-"
+                date_pattern = r'\d{4}-\d{2}-\d{2}'
+                date_cells = []
+                for cell in cells:
+                    if re.match(date_pattern, cell) or cell == '-':
+                        date_cells.append(cell)
+                
+                logger.info(f"Found date cells: {date_cells}")
+                
+                if len(date_cells) >= 3:  # At minimum: Announced, Available, Marketing withdrawn
+                    announced = date_cells[0] if len(date_cells) > 0 else '-'
+                    available = date_cells[1] if len(date_cells) > 1 else '-'
+                    withdrawn = date_cells[2] if len(date_cells) > 2 else '-'
+                    discontinued = date_cells[4] if len(date_cells) > 4 else '-'  # Skip "Support level changed" at index 3
+                    
+                    mtm_suffix = f" ({server_mtm})" if server_mtm else ""
+                    
                     # If specific field requested, return just that date
                     if field:
                         field_lower = field.lower()
                         if 'announce' in field_lower:
-                            return f"The IBM Power {model} was announced on {dates[0]}."
+                            if announced == '-':
+                                return f"The announcement date for the IBM Power {model}{mtm_suffix} has not been announced yet."
+                            return f"The IBM Power {model}{mtm_suffix} was announced on {announced}."
                         elif 'available' in field_lower:
-                            return f"The IBM Power {model} became available on {dates[1]}."
+                            if available == '-':
+                                return f"The availability date for the IBM Power {model}{mtm_suffix} has not been announced yet."
+                            return f"The IBM Power {model}{mtm_suffix} became available on {available}."
                         elif 'withdraw' in field_lower:
-                            return f"The IBM Power {model} was withdrawn from marketing on {dates[2]}."
+                            if withdrawn == '-':
+                                return f"The marketing withdrawal date for the IBM Power {model}{mtm_suffix} has not been announced yet."
+                            return f"The IBM Power {model}{mtm_suffix} was withdrawn from marketing on {withdrawn}."
                         elif 'discontinue' in field_lower or 'end_of_support' in field_lower:
-                            return f"Support for the IBM Power {model} ended on {dates[3]}."
+                            if discontinued == '-':
+                                return f"The service discontinuation date for the IBM Power {model}{mtm_suffix} has not been announced yet."
+                            return f"Support for the IBM Power {model}{mtm_suffix} will be discontinued on {discontinued}."
                     
                     # Return all dates if no specific field
-                    return (f"IBM Power {model} Lifecycle Dates:\n"
-                           f"• Announced: {dates[0]}\n"
-                           f"• Available: {dates[1]}\n"
-                           f"• Marketing Withdrawn: {dates[2]}\n"
-                           f"• Service Discontinued: {dates[3]}")
+                    result_lines = [f"IBM Power {model}{mtm_suffix} Lifecycle Dates:"]
+                    result_lines.append(f"• Announced: {announced if announced != '-' else 'Not yet announced'}")
+                    result_lines.append(f"• Available: {available if available != '-' else 'Not yet announced'}")
+                    result_lines.append(f"• Marketing Withdrawn: {withdrawn if withdrawn != '-' else 'Not yet announced'}")
+                    result_lines.append(f"• Service Discontinued: {discontinued if discontinued != '-' else 'Not yet announced'}")
+                    return '\n'.join(result_lines)
         
         return None
 

@@ -652,8 +652,17 @@ export default function SalesManualPage() {
                       placeholder="e.g., What are the key features of the IBM Power E1180?"
                       value={queryText}
                       onChange={(e) => setQueryText(e.target.value)}
+                      onKeyPress={(e) => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                          e.preventDefault();
+                          if (queryText.trim()) {
+                            handleQuery();
+                          }
+                        }
+                      }}
                       rows={3}
                       style={{ marginBottom: '1rem' }}
+                      helperText="Press Enter to submit, Shift+Enter for new line"
                     />
                     
                     <Button

@@ -1097,10 +1097,17 @@ def generate():
                     'processing_method': 'nlp_intent_detection'
                 })
             else:
+                # Get MTM for the server model if we have it
+                server_mtm = query_intent.get('mtm')
+                if not server_mtm and server_model:
+                    from server_mtm_mapper import get_mtm_for_model
+                    server_mtm = get_mtm_for_model(server_model)
+                
                 result = table_service.query(
                     query=prompt,
                     server_model=server_model,
-                    lifecycle_field=lifecycle_field
+                    lifecycle_field=lifecycle_field,
+                    server_mtm=server_mtm
                 )
                 
                 if result.get('success'):
