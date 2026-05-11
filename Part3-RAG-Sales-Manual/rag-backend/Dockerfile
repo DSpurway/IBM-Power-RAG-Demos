@@ -116,5 +116,5 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD python -c "import requests; requests.get('http://localhost:8080/health', timeout=5)"
 
 # Run with gunicorn for production
-# Timeout set to 1200s (20 minutes) to allow for Docling PDF processing
-CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "2", "--threads", "4", "--timeout", "1200", "--access-logfile", "-", "--error-logfile", "-", "app:app"]
+# Timeout set to 1800s (30 minutes) to allow for large Sales Manual chunking and embedding
+CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "2", "--threads", "4", "--timeout", "1800", "--access-logfile", "-", "--error-logfile", "-", "app:app"]
