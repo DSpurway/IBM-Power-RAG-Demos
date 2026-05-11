@@ -996,7 +996,8 @@ def generate():
                         {'label': opt['label'], 'value': opt['mtm']}
                         for opt in mtm_options
                     ],
-                    'source': 'watson_assistant'
+                    'ai_services_used': ['watsonx_assistant'],
+                    'processing_method': 'nlp_intent_detection'
                 })
             
             if not server_model:
@@ -1043,7 +1044,8 @@ def generate():
                     'content': f"I understand you're asking about a lifecycle date, but I couldn't identify which IBM Power server you're referring to. Which server are you interested in?",
                     'query_type': 'server_clarification_needed',
                     'clarification_options': clarification_options,
-                    'source': 'clarification'
+                    'ai_services_used': ['watsonx_assistant'],
+                    'processing_method': 'nlp_intent_detection'
                 })
             elif not lifecycle_field:
                 # Watson detected Check_Date intent but didn't extract which date field
@@ -1061,7 +1063,8 @@ def generate():
                         {'label': 'Service Discontinuation Date', 'value': 'end_of_support'},
                         {'label': 'Show All Lifecycle Dates', 'value': 'all'}
                     ],
-                    'source': 'clarification'
+                    'ai_services_used': ['watsonx_assistant'],
+                    'processing_method': 'nlp_intent_detection'
                 })
             else:
                 result = table_service.query(
@@ -1079,8 +1082,9 @@ def generate():
                         'server_model': server_model,
                         'field': lifecycle_field,
                         'response_time_ms': result.get('response_time_ms', 10),
-                        'source': 'sales_manual',
-                        'chunks_found': result.get('chunks_found', 0)
+                        'chunks_found': result.get('chunks_found', 0),
+                        'ai_services_used': ['watsonx_assistant', 'opensearch'],
+                        'processing_method': 'hybrid_table_lookup'
                     })
                 else:
                     logger.warning(f"Table lookup failed: {result.get('error')}")
@@ -1139,7 +1143,10 @@ def generate():
             'content': result.get('content', ''),
             'model': model,
             'query_type': query_type,
-            'timings': result.get('timings', {})
+            'timings': result.get('timings', {}),
+            'ai_services_used': ['watsonx_assistant', 'opensearch', 'llm'],
+            'processing_method': 'full_rag_generation',
+            'llm_model': 'granite' if model.lower() != 'tinyllama' else 'tinyllama'
         })
         
     except requests.exceptions.Timeout:
