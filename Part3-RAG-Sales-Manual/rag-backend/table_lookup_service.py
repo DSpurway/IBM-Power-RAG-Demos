@@ -324,7 +324,11 @@ class TableLookupService:
         Returns:
             Formatted lifecycle information or None
         """
+        logger.info(f"_parse_lifecycle_table called: model={model}, field={field}, server_mtm={server_mtm}")
+        logger.info(f"Text to parse ({len(text)} chars): {text[:500]}...")
+        
         lines = text.split('\n')
+        logger.info(f"Split into {len(lines)} lines")
         
         # Look for the "Product lifecycle dates" section
         in_lifecycle_section = False
