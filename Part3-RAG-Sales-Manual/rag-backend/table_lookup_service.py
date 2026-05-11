@@ -112,7 +112,7 @@ class TableLookupService:
                 }
             
             # Extract and format the answer from the top chunks
-            answer = self._extract_lifecycle_answer(hits, model, field)
+            answer = self._extract_lifecycle_answer(hits, model, field, server_mtm)
             
             return {
                 'success': True,
@@ -131,8 +131,8 @@ class TableLookupService:
                 'answer': f'Error retrieving data for {model}'
             }
     
-    def query(self, query: str, server_model: Optional[str] = None, 
-              lifecycle_field: Optional[str] = None) -> Dict[str, any]:  # type: ignore
+    def query(self, query: str, server_model: Optional[str] = None,
+              lifecycle_field: Optional[str] = None, server_mtm: Optional[str] = None) -> Dict[str, Any]:
         """
         Handle a natural language query with table lookup
         
@@ -140,6 +140,7 @@ class TableLookupService:
             query: Original user query
             server_model: Extracted server model
             lifecycle_field: Extracted lifecycle field
+            server_mtm: Server MTM (e.g., "9009-42G") for precise table row matching
             
         Returns:
             Dictionary with query results
@@ -151,7 +152,7 @@ class TableLookupService:
                 'query': query
             }
         
-        result = self.lookup(server_model, lifecycle_field)
+        result = self.lookup(server_model, lifecycle_field, server_mtm=server_mtm)
         result['query'] = query
         result['method'] = 'table_lookup'
         result['response_time_ms'] = 10  # Approximate
