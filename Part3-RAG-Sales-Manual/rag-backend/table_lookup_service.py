@@ -231,7 +231,7 @@ class TableLookupService:
                 return field_info
         
         # If no specific field extraction worked, try to parse table and return all dates
-        table_result = self._parse_lifecycle_table(combined_text, model, field)
+        table_result = self._parse_lifecycle_table(combined_text, model, field, server_mtm)
         if table_result:
             return table_result
         
