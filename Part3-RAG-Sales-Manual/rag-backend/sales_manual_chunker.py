@@ -136,8 +136,8 @@ class SalesManualChunker:
         chunks = []
         
         # Pattern for feature codes: (#XXXX) Feature Name
-        # Followed by optional withdrawal date and details
-        feature_pattern = r'\(#([A-Z0-9]{4})\)\s+([^\n]+)\n((?:.*?\n)*?)(?=\(#[A-Z0-9]{4}\)|\n\n[A-Z][a-z]+\s*\n|\Z)'
+        # Use non-greedy match with explicit boundaries to avoid catastrophic backtracking
+        feature_pattern = r'\(#([A-Z0-9]{4})\)\s+([^\n]+)\n((?:(?!\(#[A-Z0-9]{4}\)).)*?)(?=\(#[A-Z0-9]{4}\)|\n\n[A-Z][a-z]+\s*\n|\Z)'
         
         for match in re.finditer(feature_pattern, text, re.DOTALL):
             feature_code = match.group(1)
