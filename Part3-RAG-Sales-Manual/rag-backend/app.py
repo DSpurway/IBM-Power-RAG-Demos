@@ -1274,18 +1274,14 @@ def ingest_sales_manual():
         
         # Transform Code Engine scraper format to expected format
         # Code Engine returns: {"full_text": "...", ...}
-        # Backend expects: {"success": true, "sections": [...], ...}
+        # Backend expects: {"success": true, "full_text": "...", ...}
         transformed_data = {
             'success': True,
             'url': sales_manual_url,
             'page_title': f"{server_name} Sales Manual",
             'server_model': server_model,
             'mtm': mtm,
-            'sections': [{
-                'title': f"{server_name} Documentation",
-                'content': scraper_data.get('full_text', ''),
-                'level': 1
-            }],
+            'full_text': scraper_data.get('full_text', ''),  # Pass full_text directly
             'scraped_at': datetime.now().isoformat()
         }
         
