@@ -190,30 +190,42 @@ class WatsonAssistantService:
                 confidence = entity.get('confidence', 0)
                 
                 if confidence > 0.5:
-                    # Map Watson's lifecycle values to our field names
+                    # Map Watson's lifecycle values (canonical entity values) to our field names
+                    # Watson returns the canonical "Value" not the synonym
                     lifecycle_mapping = {
-                        'eos': 'end_of_support',
-                        'end of support': 'end_of_support',
+                        # Watson canonical values (from entity configuration)
                         'announcement': 'announced',
-                        'announced': 'announced',
+                        'eos': 'end_of_support',
                         'generally available': 'available',
-                        'ga': 'available',
+                        'withdrawn from marketing': 'withdrawn',
+                        # Also handle lowercase variations
+                        'announced': 'announced',
+                        'introduced': 'announced',
+                        'end of support': 'end_of_support',
+                        'end of service': 'end_of_support',
+                        'service discontinued': 'end_of_support',
                         'available': 'available',
-                        'withdrawal': 'withdrawn',
+                        'ga': 'available',
                         'withdrawn': 'withdrawn',
-                        'marketing withdrawal': 'withdrawn',
+                        'wdfm': 'withdrawn',
+                        'sold': 'withdrawn',
                         'stop selling': 'withdrawn',
                         'stop marketing': 'withdrawn',
+                        # Legacy mappings
                         'eol': 'end_of_support',
                         'end of life': 'end_of_support',
                         'discontinued': 'end_of_support',
-                        'discontinuation': 'end_of_support'
+                        'discontinuation': 'end_of_support',
+                        'marketing withdrawal': 'withdrawn'
                     }
                     
                     mapped_value = lifecycle_mapping.get(value)
                     if mapped_value:
                         logger.info(f"Extracted lifecycle field from Watson: {value} → {mapped_value}")
                         return mapped_value
+                    else:
+                        # Log unmapped values to help debug
+                        logger.warning(f"Watson returned unmapped lifecycle value: '{value}' (entity: {entity})")
         
         return None
     
