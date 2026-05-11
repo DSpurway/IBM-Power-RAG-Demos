@@ -28,6 +28,8 @@ import {
   Modal,
   TextInput,
   ProgressBar,
+  Select,
+  SelectItem,
 } from '@carbon/react';
 import {
   Checkmark,
@@ -92,6 +94,7 @@ export default function SalesManualPage() {
   const [queryText, setQueryText] = useState('');
   const [queryResults, setQueryResults] = useState(null);
   const [queryLoading, setQueryLoading] = useState(false);
+  const [selectedClarification, setSelectedClarification] = useState('');
 
   // Load server status on mount and check for ongoing bulk ingestion
   useEffect(() => {
@@ -363,6 +366,7 @@ export default function SalesManualPage() {
     
     setQueryLoading(true);
     setError('');
+    setSelectedClarification(''); // Reset clarification selection
     
     try {
       const response = await fetch('/api/rag/generate', {
@@ -371,6 +375,36 @@ export default function SalesManualPage() {
         body: JSON.stringify({
           collection_name: 'sales_manuals',
           prompt: queryText,
+          top_k: 3
+        })
+      });
+      
+      if (!response.ok) throw new Error('Failed to query');
+      
+      const data = await response.json();
+      setQueryResults(data);
+    } catch (err) {
+      setError(`Query error: ${err.message}`);
+    } finally {
+      setQueryLoading(false);
+    }
+  };
+
+  const handleClarificationSelect = async (value) => {
+    if (!value) return;
+    
+    setSelectedClarification(value);
+    setQueryLoading(true);
+    setError('');
+    
+    try {
+      // Re-submit query with the selected clarification value
+      const response = await fetch('/api/rag/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          collection_name: 'sales_manuals',
+          prompt: `${queryText} ${value}`, // Append the selected value to the query
           top_k: 3
         })
       });
@@ -586,8 +620,15 @@ export default function SalesManualPage() {
                   <Tile className="tile-spacing">
                     <h3>Query IBM Power Documentation</h3>
                     <p style={{ marginBottom: '1rem' }}>
-                      Ask questions about IBM Power servers. The system will search indexed Sales Manuals
-                      and provide answers using the Granite LLM.
+                      Ask questions about IBM Power servers using our <strong>Hybrid AI System</strong>:
+                    </p>
+                    <ul style={{ marginBottom: '1rem', marginLeft: '1.5rem' }}>
+                      <li><strong>watsonx Assistant</strong> - Natural language understanding and intent detection</li>
+                      <li><strong>OpenSearch Vector DB</strong> - Semantic search with preserved table structures</li>
+                      <li><strong>Granite LLM</strong> - Generative AI for complex queries requiring synthesis</li>
+                    </ul>
+                    <p style={{ marginBottom: '1rem', fontSize: '0.875rem', color: '#525252' }}>
+                      <em>Note: Simple data lookups (like lifecycle dates) are answered directly from structured tables without using the LLM, providing faster and more accurate responses.</em>
                     </p>
                     
                     <TextArea
@@ -609,9 +650,68 @@ export default function SalesManualPage() {
                     {queryResults && (
                       <div style={{ marginTop: '2rem' }}>
                         <h4>Answer:</h4>
-                        <Tile style={{ marginTop: '1rem', backgroundColor: '#f4f4f4' }}>
-                          <p>{queryResults.content || queryResults.answer}</p>
-                        </Tile>
+                        
+                        {/* AI Services Attribution */}
+                        {queryResults.ai_services_used && queryResults.ai_services_used.length > 0 && (
+                          <div style={{ marginTop: '1rem', marginBottom: '1rem' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                              <span style={{ fontSize: '0.875rem', color: '#525252' }}>AI Services:</span>
+                              {queryResults.ai_services_used.map((service, idx) => {
+                                // Map service names to display names and colors
+                                const serviceConfig = {
+                                  'watsonx_assistant': { label: 'watsonx Assistant', type: 'blue' },
+                                  'opensearch': { label: 'OpenSearch Vector DB', type: 'teal' },
+                                  'llm': { label: queryResults.llm_model === 'granite' ? 'Granite LLM' : 'TinyLlama', type: 'purple' }
+                                };
+                                const config = serviceConfig[service] || { label: service, type: 'gray' };
+                                return (
+                                  <Tag key={idx} type={config.type} size="sm">
+                                    {config.label}
+                                  </Tag>
+                                );
+                              })}
+                            </div>
+                            <div style={{ marginTop: '0.5rem' }}>
+                              <Tag type="outline" size="sm">
+                                {queryResults.processing_method === 'nlp_intent_detection' && 'NLP Intent Detection'}
+                                {queryResults.processing_method === 'hybrid_table_lookup' && 'Hybrid: Direct Table Lookup (No LLM)'}
+                                {queryResults.processing_method === 'full_rag_generation' && 'Full RAG with LLM Generation'}
+                              </Tag>
+                            </div>
+                          </div>
+                        )}
+                        
+                        {/* Check if clarification is needed */}
+                        {queryResults.clarification_options && queryResults.clarification_options.length > 0 ? (
+                          <div>
+                            <Tile style={{ marginTop: '1rem', backgroundColor: '#f4f4f4' }}>
+                              <p>{queryResults.content}</p>
+                            </Tile>
+                            <Select
+                              id="clarification-select"
+                              labelText="Please select an option:"
+                              value={selectedClarification}
+                              onChange={(e) => handleClarificationSelect(e.target.value)}
+                              style={{ marginTop: '1rem' }}
+                            >
+                              <SelectItem value="" text="Choose an option..." />
+                              {queryResults.clarification_options.map((opt, idx) => (
+                                <SelectItem key={idx} value={opt.value} text={opt.label} />
+                              ))}
+                            </Select>
+                          </div>
+                        ) : (
+                          <Tile style={{ marginTop: '1rem', backgroundColor: '#f4f4f4' }}>
+                            <p>{queryResults.content || queryResults.answer}</p>
+                            
+                            {/* Show response time for table lookups */}
+                            {queryResults.response_time_ms && (
+                              <div style={{ marginTop: '1rem', fontSize: '0.75rem', color: '#525252' }}>
+                                Response time: {queryResults.response_time_ms}ms
+                              </div>
+                            )}
+                          </Tile>
+                        )}
                         
                         {queryResults.sources && (
                           <div style={{ marginTop: '1rem' }}>
