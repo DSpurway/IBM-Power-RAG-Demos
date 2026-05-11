@@ -815,11 +815,12 @@ def search():
 @app.route('/ingest-scraped-content', methods=['POST'])
 def ingest_scraped_content():
     """
-    Ingest scraped content from Windows scraper
-    Accepts JSON with sections and creates embeddings for RAG
-    Each server gets its own collection: power_e1180, power_e1150, etc.
+    Ingest scraped content with smart hierarchical chunking
+    Preserves table structure and creates semantic chunks for hybrid query system
     """
     try:
+        from sales_manual_chunker import SalesManualChunker
+        
         data = request.get_json()
         
         if not data or not data.get('success'):
@@ -827,25 +828,47 @@ def ingest_scraped_content():
         
         url = data.get('url', 'unknown')
         page_title = data.get('page_title', 'Untitled')
-        sections = data.get('sections', [])
         full_text = data.get('full_text', '')
-        server_model = data.get('server_model', None)  # e.g., "E1180"
+        server_model = data.get('server_model', None)
+        mtm = data.get('mtm', None)
         
-        if not sections:
-            return jsonify({'error': 'No sections found in scraped data'}), 400
+        if not full_text:
+            return jsonify({'error': 'No content found in scraped data'}), 400
         
         logger.info(f"Ingesting scraped content from: {url}")
-        logger.info(f"Title: {page_title}, Sections: {len(sections)}")
+        logger.info(f"Server: {page_title}, MTM: {mtm}, Full text length: {len(full_text)} characters")
         
-        # Create collection name based on server model
-        if server_model:
-            # Convert E1180 -> power_e1180
+        # Create collection name based on MTM
+        if mtm:
+            collection_name = f"{OPENSEARCH_DB_PREFIX}_mtm_{mtm.lower().replace('-', '_')}"
+            logger.info(f"Using MTM-based collection: {collection_name}")
+        elif server_model:
             collection_name = f"{OPENSEARCH_DB_PREFIX}_power_{server_model.lower().replace('-', '_')}"
             logger.info(f"Using server-specific collection: {collection_name}")
         else:
-            # Fallback to generic collection
             collection_name = f"{OPENSEARCH_DB_PREFIX}_ibm_docs"
-            logger.warning(f"No server_model provided, using generic collection: {collection_name}")
+            logger.warning(f"No MTM/server_model provided, using generic collection: {collection_name}")
+        
+        # Initialize smart chunker
+        chunker = SalesManualChunker(max_chunk_size=1500, overlap=100)
+        
+        # Apply smart hierarchical chunking
+        chunks = chunker.chunk_sales_manual(
+            full_text=full_text,
+            server_name=page_title,
+            mtm=mtm or server_model or 'unknown',
+            url=url
+        )
+        
+        logger.info(f"Smart chunking created {len(chunks)} chunks")
+        
+        # Log chunk distribution by type
+        chunk_types = {}
+        for chunk in chunks:
+            chunk_type = chunk['metadata']['section_type']
+            chunk_types[chunk_type] = chunk_types.get(chunk_type, 0) + 1
+        
+        logger.info(f"Chunk distribution: {chunk_types}")
         
         # Initialize OpenSearch and embeddings
         client = get_opensearch_client()
@@ -855,57 +878,18 @@ def ingest_scraped_content():
         index_name = _generate_index_name(collection_name)
         _setup_index(index_name, embeddings.client.get_sentence_embedding_dimension())
         
-        # Process sections into documents
-        documents = []
-        for i, section in enumerate(sections):
-            section_title = section.get('title', f'Section {i+1}')
-            section_content = section.get('content', [])
-            
-            # Combine section content
-            if isinstance(section_content, list):
-                text = '\n'.join([
-                    item.get('text', item) if isinstance(item, dict) else str(item)
-                    for item in section_content
-                ])
-            else:
-                text = str(section_content)
-            
-            # Skip empty sections
-            if not text.strip():
-                continue
-            
-            # Create document with metadata
-            doc = {
-                'text': f"{section_title}\n\n{text}",
-                'metadata': {
-                    'source': url,
-                    'page_title': page_title,
-                    'section_title': section_title,
-                    'section_level': section.get('level', 'unknown'),
-                    'section_index': i,
-                    'scraped_at': data.get('scraped_at', datetime.now().isoformat()),
-                    'scraper_method': data.get('method', 'unknown')
-                }
-            }
-            documents.append(doc)
-        
-        if not documents:
-            return jsonify({'error': 'No valid content found in sections'}), 400
-        
-        logger.info(f"Processing {len(documents)} documents for indexing")
-        
-        # Create embeddings and index documents
+        # Index chunks
         indexed_count = 0
         failed_count = 0
         
-        for doc in documents:
+        for i, chunk in enumerate(chunks):
             try:
                 # Generate embedding
-                embedding = embeddings.embed_query(doc['text'])
+                embedding = embeddings.embed_query(chunk['text'])
                 
                 # Create document ID
                 doc_id = hashlib.md5(
-                    f"{doc['metadata']['source']}_{doc['metadata']['section_index']}".encode()
+                    f"{chunk['metadata']['source']}_{chunk['metadata']['section_title']}_{i}".encode()
                 ).hexdigest()
                 
                 # Index document
@@ -913,15 +897,15 @@ def ingest_scraped_content():
                     index=index_name,
                     id=doc_id,
                     body={
-                        'text': doc['text'],
+                        'text': chunk['text'],
                         'embedding': embedding,
-                        'metadata': doc['metadata']
+                        'metadata': chunk['metadata']
                     }
                 )
                 indexed_count += 1
                 
             except Exception as e:
-                logger.error(f"Failed to index document: {e}")
+                logger.error(f"Failed to index chunk {i}: {e}")
                 failed_count += 1
         
         # Refresh index
@@ -934,13 +918,16 @@ def ingest_scraped_content():
             'collection': collection_name,
             'indexed': indexed_count,
             'failed': failed_count,
-            'total_sections': len(sections),
+            'chunk_distribution': chunk_types,
             'page_title': page_title,
-            'source_url': url
+            'source_url': url,
+            'mtm': mtm
         })
         
     except Exception as e:
         logger.error(f"Error ingesting scraped content: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
         return jsonify({'error': str(e)}), 500
 
 
