@@ -1289,7 +1289,7 @@ def ingest_sales_manual():
         ingest_response = requests.post(
             'http://localhost:8080/ingest-scraped-content',
             json=transformed_data,
-            timeout=300  # 5 minute timeout for ingestion
+            timeout=900  # 15 minute timeout for ingestion (chunking + embeddings takes time)
         )
         
         if ingest_response.status_code == 200:
