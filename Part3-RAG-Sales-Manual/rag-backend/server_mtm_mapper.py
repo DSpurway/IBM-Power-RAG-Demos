@@ -41,6 +41,9 @@ SERVER_MTM_MAP = {
     "LC921": "9006-12P",
 }
 
+# Reverse mapping: MTM to server model
+MTM_SERVER_MAP = {mtm: model for model, mtm in SERVER_MTM_MAP.items()}
+
 
 def get_mtm_for_model(server_model: str) -> str:
     """

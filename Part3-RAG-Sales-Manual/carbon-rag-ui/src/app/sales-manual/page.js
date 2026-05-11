@@ -398,15 +398,31 @@ export default function SalesManualPage() {
     setError('');
     
     try {
-      // Re-submit query with the selected clarification value
+      // Determine what type of clarification this is based on the current query results
+      const clarificationType = queryResults.query_type;
+      let requestBody = {
+        collection_name: 'sales_manuals',
+        prompt: queryText,
+        top_k: 3
+      };
+      
+      // Add the clarification value based on type
+      if (clarificationType === 'mtm_clarification_needed') {
+        // User selected an MTM - send it as server_mtm parameter
+        requestBody.server_mtm = value;
+      } else if (clarificationType === 'server_clarification_needed') {
+        // User selected a server model - send it as server_model parameter
+        requestBody.server_model = value;
+      } else if (clarificationType === 'lifecycle_clarification_needed') {
+        // User selected a lifecycle field - send it as lifecycle_field parameter
+        requestBody.lifecycle_field = value;
+      }
+      
+      // Re-submit query with the selected clarification
       const response = await fetch('/api/rag/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          collection_name: 'sales_manuals',
-          prompt: `${queryText} ${value}`, // Append the selected value to the query
-          top_k: 3
-        })
+        body: JSON.stringify(requestBody)
       });
       
       if (!response.ok) throw new Error('Failed to query');

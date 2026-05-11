@@ -963,15 +963,45 @@ def generate():
         stream = data.get('stream', False)
         model = data.get('model', 'granite')  # 'granite' or 'tinyllama'
         
+        # Get clarification parameters from UI
+        server_mtm_override = data.get('server_mtm')  # MTM selected by user (e.g., "9009-42A")
+        server_model_override = data.get('server_model')  # Server model selected by user (e.g., "S924")
+        lifecycle_field_override = data.get('lifecycle_field')  # Lifecycle field selected by user
+        
         if not prompt:
             return jsonify({'error': 'prompt is required'}), 400
         
         logger.info(f"Processing query: {prompt[:100]}...")
+        if server_mtm_override:
+            logger.info(f"User selected MTM: {server_mtm_override}")
+        if server_model_override:
+            logger.info(f"User selected server model: {server_model_override}")
+        if lifecycle_field_override:
+            logger.info(f"User selected lifecycle field: {lifecycle_field_override}")
         
         # Step 1: Classify the query to determine if it's a table lookup
         classifier = get_query_classifier()
         query_intent = classifier.get_query_intent(prompt)
         query_type = query_intent['query_type']
+        
+        # Override query intent with user selections if provided
+        if server_mtm_override:
+            # Convert MTM to server model (e.g., "9009-42A" -> "S924")
+            from server_mtm_mapper import MTM_SERVER_MAP
+            server_model = MTM_SERVER_MAP.get(server_mtm_override)
+            if server_model:
+                query_intent['server_model'] = server_model
+                query_intent['mtm'] = server_mtm_override
+                query_intent['mtm_options'] = []  # Clear options since user already selected
+                logger.info(f"Overriding with user-selected MTM: {server_mtm_override} -> {server_model}")
+        
+        if server_model_override:
+            query_intent['server_model'] = server_model_override
+            logger.info(f"Overriding with user-selected server model: {server_model_override}")
+        
+        if lifecycle_field_override:
+            query_intent['lifecycle_field'] = lifecycle_field_override
+            logger.info(f"Overriding with user-selected lifecycle field: {lifecycle_field_override}")
         
         logger.info(f"Query classified as: {query_type}")
         
