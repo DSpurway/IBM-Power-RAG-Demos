@@ -5,6 +5,8 @@ Preserves table structure for direct lookup and creates semantic chunks for RAG
 
 import re
 import logging
+import hashlib
+from datetime import datetime
 from typing import List, Dict, Any, Optional
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 
@@ -40,26 +42,38 @@ class SalesManualChunker:
         """
         chunks = []
         
+        # Calculate content hash for change detection
+        content_hash = hashlib.sha256(full_text.encode('utf-8')).hexdigest()
+        ingestion_timestamp = datetime.utcnow().isoformat() + 'Z'
+        
+        # Common metadata for all chunks (for change detection)
+        common_metadata = {
+            'content_hash': content_hash,
+            'content_length': len(full_text),
+            'ingestion_timestamp': ingestion_timestamp,
+            'chunker_version': '1.0.0'
+        }
+        
         # 1. Extract and preserve lifecycle table (CRITICAL for direct lookup)
-        lifecycle_chunk = self._extract_lifecycle_table(full_text, server_name, mtm, url)
+        lifecycle_chunk = self._extract_lifecycle_table(full_text, server_name, mtm, url, common_metadata)
         if lifecycle_chunk:
             chunks.append(lifecycle_chunk)
             logger.info(f"✓ Extracted lifecycle table for {mtm}")
         
         # 2. Extract feature codes with metadata (for metadata search)
-        feature_chunks = self._extract_feature_codes(full_text, server_name, mtm, url)
+        feature_chunks = self._extract_feature_codes(full_text, server_name, mtm, url, common_metadata)
         chunks.extend(feature_chunks)
         logger.info(f"✓ Extracted {len(feature_chunks)} feature codes for {mtm}")
         
         # 3. Extract other sections for RAG
-        section_chunks = self._extract_sections(full_text, server_name, mtm, url)
+        section_chunks = self._extract_sections(full_text, server_name, mtm, url, common_metadata)
         chunks.extend(section_chunks)
         logger.info(f"✓ Extracted {len(section_chunks)} section chunks for {mtm}")
         
-        logger.info(f"Total chunks created for {mtm}: {len(chunks)}")
+        logger.info(f"Total chunks created for {mtm}: {len(chunks)} (hash: {content_hash[:8]}...)")
         return chunks
     
-    def _extract_lifecycle_table(self, text: str, server_name: str, mtm: str, url: str) -> Optional[Dict]:
+    def _extract_lifecycle_table(self, text: str, server_name: str, mtm: str, url: str, common_metadata: Dict) -> Optional[Dict]:
         """
         Extract lifecycle table and preserve as Markdown for direct parsing
         This enables fast, accurate responses without LLM
@@ -92,7 +106,8 @@ class SalesManualChunker:
                 'source': url,
                 'priority': 'critical',
                 'query_type': 'direct_lookup',  # No LLM needed
-                'chunk_strategy': 'preserve_table_structure'
+                'chunk_strategy': 'preserve_table_structure',
+                **common_metadata  # Add change detection metadata
             }
         }
     
@@ -128,7 +143,7 @@ class SalesManualChunker:
         
         return '\n'.join(markdown_lines)
     
-    def _extract_feature_codes(self, text: str, server_name: str, mtm: str, url: str) -> List[Dict]:
+    def _extract_feature_codes(self, text: str, server_name: str, mtm: str, url: str, common_metadata: Dict) -> List[Dict]:
         """
         Extract individual feature codes with metadata
         Enables metadata-based search and filtering
@@ -165,7 +180,8 @@ class SalesManualChunker:
                     'priority': 'high',
                     'query_type': 'metadata_search',  # Can use metadata filtering
                     'chunk_strategy': 'per_feature_code',
-                    **metadata  # Add parsed metadata (withdrawal_date, csu, etc.)
+                    **metadata,  # Add parsed metadata (withdrawal_date, csu, etc.)
+                    **common_metadata  # Add change detection metadata
                 }
             })
         
@@ -202,7 +218,7 @@ class SalesManualChunker:
         
         return metadata
     
-    def _extract_sections(self, text: str, server_name: str, mtm: str, url: str) -> List[Dict]:
+    def _extract_sections(self, text: str, server_name: str, mtm: str, url: str, common_metadata: Dict) -> List[Dict]:
         """
         Extract other sections for RAG queries
         These require LLM for synthesis and complex queries
@@ -230,7 +246,8 @@ class SalesManualChunker:
             if strategy == 'keep_intact':
                 chunks.append(self._create_chunk(
                     section_name, section_text, server_name, mtm, url,
-                    priority=config['priority'], strategy='keep_intact'
+                    priority=config['priority'], strategy='keep_intact',
+                    common_metadata=common_metadata
                 ))
             
             elif strategy == 'split_if_large':
@@ -241,12 +258,14 @@ class SalesManualChunker:
                             f"{section_name} (Part {i+1}/{len(sub_chunks)})",
                             sub_chunk, server_name, mtm, url,
                             priority=config['priority'], strategy='split_large',
-                            part_index=i, total_parts=len(sub_chunks)
+                            part_index=i, total_parts=len(sub_chunks),
+                            common_metadata=common_metadata
                         ))
                 else:
                     chunks.append(self._create_chunk(
                         section_name, section_text, server_name, mtm, url,
-                        priority=config['priority'], strategy='keep_intact'
+                        priority=config['priority'], strategy='keep_intact',
+                        common_metadata=common_metadata
                     ))
             
             elif strategy == 'split_by_subheading':
@@ -256,7 +275,8 @@ class SalesManualChunker:
                         f"{section_name} - {sub_name}",
                         sub_text, server_name, mtm, url,
                         priority=config['priority'], strategy='subheading_split',
-                        subsection=sub_name
+                        subsection=sub_name,
+                        common_metadata=common_metadata
                     ))
             
             elif strategy == 'split_by_paragraph':
@@ -266,7 +286,8 @@ class SalesManualChunker:
                         f"{section_name} (Part {i+1}/{len(sub_chunks)})",
                         sub_chunk, server_name, mtm, url,
                         priority=config['priority'], strategy='paragraph_split',
-                        part_index=i, total_parts=len(sub_chunks)
+                        part_index=i, total_parts=len(sub_chunks),
+                        common_metadata=common_metadata
                     ))
         
         return chunks
