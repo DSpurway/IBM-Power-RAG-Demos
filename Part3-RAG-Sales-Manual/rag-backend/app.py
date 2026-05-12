@@ -716,9 +716,19 @@ def search():
         # Step 2: Route based on classification
         if classification['query_type'] == 'table_lookup':
             # Direct table lookup from OpenSearch - no LLM generation needed
+            server_model = classification.get('server_model')
+            
+            if not server_model:
+                return jsonify({
+                    'success': False,
+                    'error': 'Could not identify server model in query',
+                    'query_type': 'table_lookup',
+                    'classification': classification
+                }), 400
+            
             table_service = get_table_lookup_service()
             result = table_service.lookup(
-                server_model=classification.get('server_model'),
+                server_model=server_model,
                 field=classification.get('lifecycle_field'),
                 collection_name=collection_name,
                 server_mtm=classification.get('mtm')
@@ -738,16 +748,21 @@ def search():
                 'query_type': 'table_lookup',
                 'results': [{
                     'content': result['answer'],
+                    'table_data': result.get('table_data'),  # Raw table text for display
                     'metadata': {
                         'source': result.get('source', 'sales_manual'),
+                        'source_url': result.get('source_url'),  # Link to sales manual
+                        'source_filename': result.get('source_filename'),
                         'server_model': result.get('server_model'),
+                        'mtm': result.get('mtm'),
                         'field': result.get('field'),
                         'chunks_found': result.get('chunks_found', 0)
                     },
                     'score': 1.0
                 }],
                 'count': 1,
-                'classification': classification
+                'classification': classification,
+                'table_lookup': True  # Flag to indicate this is a direct table lookup
             })
         
         elif classification['query_type'] == 'metadata_lookup':
