@@ -733,16 +733,58 @@ export default function SalesManualPage() {
                             </Select>
                           </div>
                         ) : (
-                          <Tile style={{ marginTop: '1rem', backgroundColor: '#f4f4f4' }}>
-                            <p>{queryResults.content || queryResults.answer}</p>
+                          <>
+                            <Tile style={{ marginTop: '1rem', backgroundColor: '#f4f4f4' }}>
+                              <p>{queryResults.content || queryResults.answer}</p>
+                              
+                              {/* Show response time for table lookups */}
+                              {queryResults.response_time_ms && (
+                                <div style={{ marginTop: '1rem', fontSize: '0.75rem', color: '#525252' }}>
+                                  Response time: {queryResults.response_time_ms}ms
+                                </div>
+                              )}
+                            </Tile>
                             
-                            {/* Show response time for table lookups */}
-                            {queryResults.response_time_ms && (
-                              <div style={{ marginTop: '1rem', fontSize: '0.75rem', color: '#525252' }}>
-                                Response time: {queryResults.response_time_ms}ms
-                              </div>
+                            {/* Display table data if available (for table lookups) */}
+                            {queryResults.table_data && (
+                              <Tile style={{ marginTop: '1rem', backgroundColor: '#e0e0e0' }}>
+                                <h5 style={{ marginBottom: '0.5rem' }}>Lifecycle Table from Sales Manual:</h5>
+                                <pre style={{
+                                  fontSize: '0.75rem',
+                                  whiteSpace: 'pre-wrap',
+                                  fontFamily: 'monospace',
+                                  backgroundColor: '#ffffff',
+                                  padding: '0.5rem',
+                                  borderRadius: '4px',
+                                  overflow: 'auto'
+                                }}>
+                                  {queryResults.table_data}
+                                </pre>
+                              </Tile>
                             )}
-                          </Tile>
+                            
+                            {/* Display source URL if available */}
+                            {queryResults.source_url && (
+                              <Tile style={{ marginTop: '1rem', backgroundColor: '#e8f4fd' }}>
+                                <h5 style={{ marginBottom: '0.5rem' }}>Source:</h5>
+                                <a
+                                  href={queryResults.source_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  style={{
+                                    fontSize: '0.875rem',
+                                    wordBreak: 'break-all',
+                                    color: '#0f62fe'
+                                  }}
+                                >
+                                  {queryResults.source_filename || queryResults.source_url}
+                                </a>
+                                <p style={{ fontSize: '0.75rem', color: '#525252', marginTop: '0.5rem' }}>
+                                  Click to verify this information in the original IBM Sales Manual
+                                </p>
+                              </Tile>
+                            )}
+                          </>
                         )}
                         
                         {queryResults.sources && (
