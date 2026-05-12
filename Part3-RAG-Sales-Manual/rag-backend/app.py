@@ -309,9 +309,10 @@ def list_collections():
         
         # Try to match each known MTM to its hashed index and get document count
         for mtm in known_mtms:
-            # Match the naming convention used in ingest_scraped_content (line 885)
+            # Match the naming convention used in ingest_scraped_content (line 887)
             collection_name = f"{OPENSEARCH_DB_PREFIX}_mtm_{mtm.lower().replace('-', '_')}"
             expected_index = _generate_index_name(collection_name)
+            logger.info(f"Checking MTM {mtm}: collection={collection_name}, expected_index={expected_index}, in_list={expected_index in sales_manual_indices}")
             if expected_index in sales_manual_indices:
                 # Get document count for this index
                 try:
