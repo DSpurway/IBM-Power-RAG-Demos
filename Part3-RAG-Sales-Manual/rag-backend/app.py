@@ -262,7 +262,20 @@ def list_collections():
     """List all collections (OpenSearch indices) with MTM-based reverse mapping and document counts"""
     try:
         client = get_opensearch_client()
-        indices = client.indices.get(index=f"{OPENSEARCH_DB_PREFIX}_*")
+        
+        # Get all indices - try with and without prefix
+        try:
+            indices = client.indices.get(index=f"{OPENSEARCH_DB_PREFIX}_*")
+            logger.info(f"Found {len(indices)} indices with prefix '{OPENSEARCH_DB_PREFIX}_*'")
+        except Exception as e:
+            logger.warning(f"No indices found with prefix '{OPENSEARCH_DB_PREFIX}_*': {e}")
+            # Try getting all indices
+            try:
+                indices = client.indices.get(index="*")
+                logger.info(f"Found {len(indices)} total indices (no prefix filter)")
+            except Exception as e2:
+                logger.error(f"Failed to get any indices: {e2}")
+                indices = {}
         
         # Build a reverse mapping: try to match hashed index names to known MTM-based collection names
         # For IBM Power servers, collection names are based on MTM: mtm_9080_heu, mtm_9009_42a, etc.
@@ -284,6 +297,20 @@ def list_collections():
         collections_details = {}
         index_names = list(indices.keys())
         
+        logger.info(f"All index names found: {index_names}")
+        
+        # Build a map of all possible collection names to their expected hashed index names
+        mtm_to_expected_index = {}
+        for mtm in known_mtms:
+            collection_name = f"{OPENSEARCH_DB_PREFIX}_mtm_{mtm.lower().replace('-', '_')}"
+            expected_index = _generate_index_name(collection_name)
+            mtm_to_expected_index[mtm] = {
+                'collection_name': collection_name,
+                'expected_index': expected_index
+            }
+        
+        logger.info(f"Expected index mappings: {mtm_to_expected_index}")
+        
         # Filter out non-Sales Manual collections (like Harry Potter)
         # Only process MTM-based collections for Sales Manual servers
         sales_manual_indices = []
@@ -292,46 +319,59 @@ def list_collections():
         for index_name in index_names:
             # Check if this is a Sales Manual MTM-based index
             is_sales_manual = False
-            for mtm in known_mtms:
-                # Must match the naming convention used in ingest_scraped_content
-                collection_name = f"{OPENSEARCH_DB_PREFIX}_mtm_{mtm.lower().replace('-', '_')}"
-                expected_index = _generate_index_name(collection_name)
-                if index_name == expected_index:
+            matched_mtm = None
+            
+            for mtm, mapping in mtm_to_expected_index.items():
+                if index_name == mapping['expected_index']:
                     is_sales_manual = True
+                    matched_mtm = mtm
                     break
             
             if is_sales_manual:
                 sales_manual_indices.append(index_name)
+                logger.info(f"Index {index_name} matched to MTM {matched_mtm}")
             else:
                 other_indices.append(index_name)
+                logger.info(f"Index {index_name} is not a Sales Manual index")
         
-        logger.info(f"Found {len(sales_manual_indices)} Sales Manual indices and {len(other_indices)} other indices (e.g., Harry Potter)")
+        logger.info(f"Found {len(sales_manual_indices)} Sales Manual indices and {len(other_indices)} other indices")
         
         # Try to match each known MTM to its hashed index and get document count
         for mtm in known_mtms:
-            # Match the naming convention used in ingest_scraped_content (line 887)
-            collection_name = f"{OPENSEARCH_DB_PREFIX}_mtm_{mtm.lower().replace('-', '_')}"
-            expected_index = _generate_index_name(collection_name)
-            logger.info(f"Checking MTM {mtm}: collection={collection_name}, expected_index={expected_index}, in_list={expected_index in sales_manual_indices}")
-            if expected_index in sales_manual_indices:
+            mapping = mtm_to_expected_index[mtm]
+            collection_name = mapping['collection_name']
+            expected_index = mapping['expected_index']
+            
+            logger.info(f"Checking MTM {mtm}: collection={collection_name}, expected_index={expected_index}, exists={expected_index in index_names}")
+            
+            if expected_index in index_names:
                 # Get document count for this index
                 try:
                     count_response = client.count(index=expected_index)
                     doc_count = count_response.get('count', 0)
                     
-                    # Only include if it has documents
+                    logger.info(f"MTM {mtm} index {expected_index} has {doc_count} documents")
+                    
+                    # Include even if it has 0 documents (to show it exists but is empty)
+                    collections_map[mtm] = expected_index
+                    collections_details[mtm] = {
+                        'index_name': expected_index,
+                        'document_count': doc_count,
+                        'collection_name': collection_name
+                    }
+                    
                     if doc_count > 0:
-                        collections_map[mtm] = expected_index
-                        collections_details[mtm] = {
-                            'index_name': expected_index,
-                            'document_count': doc_count,
-                            'collection_name': collection_name
-                        }
-                        logger.info(f"Found indexed MTM {mtm}: {doc_count} documents in {expected_index}")
+                        logger.info(f"✓ Found indexed MTM {mtm}: {doc_count} documents in {expected_index}")
+                    else:
+                        logger.warning(f"⚠ MTM {mtm} index exists but has 0 documents: {expected_index}")
+                        
                 except Exception as count_error:
-                    logger.warning(f"Error getting count for {mtm} ({expected_index}): {count_error}")
+                    logger.error(f"Error getting count for {mtm} ({expected_index}): {count_error}")
+            else:
+                logger.info(f"✗ MTM {mtm} not found (expected index: {expected_index})")
         
-        logger.info(f"Found {len(collections_map)} indexed Sales Manual MTMs with documents: {list(collections_map.keys())}")
+        logger.info(f"Final result: {len(collections_map)} MTMs found with indices")
+        logger.info(f"MTMs with documents: {[mtm for mtm, details in collections_details.items() if details['document_count'] > 0]}")
         
         return jsonify({
             'success': True,
@@ -339,11 +379,18 @@ def list_collections():
             'sales_manual_collections': sales_manual_indices,  # Only Sales Manual indices
             'other_collections': other_indices,  # Other collections (Harry Potter, etc.)
             'collections_map': collections_map,  # MTM -> index_name mapping (Sales Manual only)
-            'collections_details': collections_details  # MTM -> detailed info including doc count (Sales Manual only)
+            'collections_details': collections_details,  # MTM -> detailed info including doc count (Sales Manual only)
+            'debug_info': {
+                'opensearch_prefix': OPENSEARCH_DB_PREFIX,
+                'total_indices': len(index_names),
+                'expected_mappings_sample': {k: v for k, v in list(mtm_to_expected_index.items())[:3]}
+            }
         })
     except Exception as e:
         logger.error(f"Error listing collections: {e}")
-        return jsonify({'error': str(e)}), 500
+        import traceback
+        logger.error(traceback.format_exc())
+        return jsonify({'error': str(e), 'collections': [], 'collections_map': {}, 'collections_details': {}}), 500
 
 @app.route('/api/collections/<collection_name>', methods=['DELETE'])
 def drop_collection(collection_name):
