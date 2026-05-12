@@ -86,52 +86,15 @@ class TableLookupService:
                     'answer': f'Sales manual data not yet loaded. Please wait for bulk ingestion to complete.'
                 }
             
-            # Use text-only search when searching across multiple indices
-            # For lifecycle queries, prioritize chunks with "Product life cycle dates" or "lifecycle"
-            # This ensures we find the actual lifecycle table, not just mentions of dates
+            # For lifecycle table lookups, search for the exact phrase "Product life cycle dates"
+            # This is the header that appears directly above the lifecycle table in all sales manuals
+            # No need to filter by model/MTM - the table contains all MTMs for that server family
             search_body = {
-                "size": 10,  # Get top 10 chunks
+                "size": 5,  # Only need a few chunks - table should be in first result
                 "_source": ["text", "metadata"],
                 "query": {
-                    "bool": {
-                        "should": [
-                            # Highest priority: chunks with "Product life cycle dates" (the table header)
-                            {
-                                "match_phrase": {
-                                    "text": {
-                                        "query": "Product life cycle dates",
-                                        "boost": 10.0
-                                    }
-                                }
-                            },
-                            # High priority: chunks with "lifecycle" keyword
-                            {
-                                "match": {
-                                    "text": {
-                                        "query": "lifecycle",
-                                        "boost": 5.0
-                                    }
-                                }
-                            },
-                            # Medium priority: chunks with the MTM (if we have it)
-                            {
-                                "match": {
-                                    "text": {
-                                        "query": server_mtm if server_mtm else model,
-                                        "boost": 3.0
-                                    }
-                                }
-                            },
-                            # Lower priority: general search terms
-                            {
-                                "multi_match": {
-                                    "query": search_query,
-                                    "fields": ["text", "metadata.filename"],
-                                    "boost": 1.0
-                                }
-                            }
-                        ],
-                        "minimum_should_match": 1
+                    "match_phrase": {
+                        "text": "Product life cycle dates"
                     }
                 }
             }
