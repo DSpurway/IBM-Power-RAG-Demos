@@ -117,4 +117,5 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
 
 # Run with gunicorn for production
 # Timeout set to 1800s (30 minutes) to allow for large Sales Manual chunking and embedding
-CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "2", "--threads", "4", "--timeout", "1800", "--access-logfile", "-", "--error-logfile", "-", "app:app"]
+# Using 1 worker to ensure consistent responses (no worker-level caching issues)
+CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "1", "--threads", "8", "--timeout", "1800", "--access-logfile", "-", "--error-logfile", "-", "app:app"]
