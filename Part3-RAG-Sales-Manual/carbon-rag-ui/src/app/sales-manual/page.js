@@ -139,18 +139,22 @@ export default function SalesManualPage() {
     setError('');
     
     try {
-      // Get collections from backend (now returns MTM-based collection metadata)
+      // Get collections from backend (now returns MTM-based collection metadata with doc counts)
       const response = await fetch('/api/rag/collections');
       if (!response.ok) throw new Error('Failed to load collections');
       
       const data = await response.json();
       const collectionsMap = data.collections_map || {};
+      const collectionsDetails = data.collections_details || {};
+      
+      console.log('[Page Load] Collections data:', { collectionsMap, collectionsDetails });
       
       // Match servers with their indexed status
-      // Backend now returns a map of MTM -> index_name
+      // Backend now returns a map of MTM -> index_name and detailed info with doc counts
       const serversWithStatus = IBM_POWER_SERVERS.map(server => {
         const isIndexed = server.mtm in collectionsMap;
         const collectionName = `mtm_${server.mtm.toLowerCase().replace(/-/g, '_')}`;
+        const details = collectionsDetails[server.mtm];
         
         return {
           ...server,
@@ -159,7 +163,7 @@ export default function SalesManualPage() {
           status: isIndexed ? 'indexed' : 'not-indexed',
           lastUpdated: isIndexed ? new Date().toISOString() : null,
           contentHash: null,
-          documentCount: isIndexed ? '?' : 0
+          documentCount: details ? details.document_count : 0
         };
       });
       
@@ -168,14 +172,17 @@ export default function SalesManualPage() {
       // Count indexed vs not-indexed
       const indexedCount = serversWithStatus.filter(s => s.status === 'indexed').length;
       const notIndexedCount = serversWithStatus.filter(s => s.status === 'not-indexed').length;
+      const totalDocs = serversWithStatus.reduce((sum, s) => sum + (s.documentCount || 0), 0);
       
-      console.log(`[Page Load] Server status: ${indexedCount} indexed, ${notIndexedCount} not indexed`);
+      console.log(`[Page Load] Server status: ${indexedCount} indexed (${totalDocs} total docs), ${notIndexedCount} not indexed`);
       
       // Show helpful message if nothing is indexed
       if (indexedCount === 0 && notIndexedCount > 0) {
         setError('No servers indexed yet. Click "Load All Documents" to start bulk ingestion.');
       } else if (notIndexedCount > 0) {
-        setError(`${indexedCount} servers indexed, ${notIndexedCount} not indexed. You can load individual servers or use "Load All Documents".`);
+        setError(`${indexedCount} servers indexed (${totalDocs} documents), ${notIndexedCount} not indexed. You can load individual servers or use "Load All Documents".`);
+      } else {
+        setError(`All ${indexedCount} servers indexed successfully! Total: ${totalDocs} documents.`);
       }
     } catch (err) {
       console.error('Error loading server status:', err);

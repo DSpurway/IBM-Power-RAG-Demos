@@ -259,13 +259,14 @@ def generate_chunk_id(doc_id, page_content):
 
 @app.route('/api/collections', methods=['GET'])
 def list_collections():
-    """List all collections (OpenSearch indices) with MTM-based reverse mapping"""
+    """List all collections (OpenSearch indices) with MTM-based reverse mapping and document counts"""
     try:
         client = get_opensearch_client()
         indices = client.indices.get(index=f"{OPENSEARCH_DB_PREFIX}_*")
         
         # Build a reverse mapping: try to match hashed index names to known MTM-based collection names
         # For IBM Power servers, collection names are based on MTM: mtm_9080_heu, mtm_9009_42a, etc.
+        # Note: This excludes other collections like Harry Potter which are used in other parts of the demo
         known_mtms = [
             # POWER11
             "9080-HEU", "9043-MRU", "9824-42A", "9824-22A",
@@ -280,21 +281,62 @@ def list_collections():
         ]
         
         collections_map = {}
+        collections_details = {}
         index_names = list(indices.keys())
         
-        # Try to match each known MTM to its hashed index
+        # Filter out non-Sales Manual collections (like Harry Potter)
+        # Only process MTM-based collections for Sales Manual servers
+        sales_manual_indices = []
+        other_indices = []
+        
+        for index_name in index_names:
+            # Check if this is a Sales Manual MTM-based index
+            is_sales_manual = False
+            for mtm in known_mtms:
+                collection_name = f"mtm_{mtm.lower().replace('-', '_')}"
+                expected_index = _generate_index_name(collection_name)
+                if index_name == expected_index:
+                    is_sales_manual = True
+                    break
+            
+            if is_sales_manual:
+                sales_manual_indices.append(index_name)
+            else:
+                other_indices.append(index_name)
+        
+        logger.info(f"Found {len(sales_manual_indices)} Sales Manual indices and {len(other_indices)} other indices (e.g., Harry Potter)")
+        
+        # Try to match each known MTM to its hashed index and get document count
         for mtm in known_mtms:
             collection_name = f"mtm_{mtm.lower().replace('-', '_')}"
             expected_index = _generate_index_name(collection_name)
-            if expected_index in index_names:
-                collections_map[mtm] = expected_index
+            if expected_index in sales_manual_indices:
+                # Get document count for this index
+                try:
+                    count_response = client.count(index=expected_index)
+                    doc_count = count_response.get('count', 0)
+                    
+                    # Only include if it has documents
+                    if doc_count > 0:
+                        collections_map[mtm] = expected_index
+                        collections_details[mtm] = {
+                            'index_name': expected_index,
+                            'document_count': doc_count,
+                            'collection_name': collection_name
+                        }
+                        logger.info(f"Found indexed MTM {mtm}: {doc_count} documents in {expected_index}")
+                except Exception as count_error:
+                    logger.warning(f"Error getting count for {mtm} ({expected_index}): {count_error}")
         
-        logger.info(f"Found {len(collections_map)} indexed MTMs: {list(collections_map.keys())}")
+        logger.info(f"Found {len(collections_map)} indexed Sales Manual MTMs with documents: {list(collections_map.keys())}")
         
         return jsonify({
             'success': True,
-            'collections': index_names,  # Keep for backward compatibility
-            'collections_map': collections_map  # New: MTM -> index_name mapping
+            'collections': index_names,  # All indices (including Harry Potter) for backward compatibility
+            'sales_manual_collections': sales_manual_indices,  # Only Sales Manual indices
+            'other_collections': other_indices,  # Other collections (Harry Potter, etc.)
+            'collections_map': collections_map,  # MTM -> index_name mapping (Sales Manual only)
+            'collections_details': collections_details  # MTM -> detailed info including doc count (Sales Manual only)
         })
     except Exception as e:
         logger.error(f"Error listing collections: {e}")
