@@ -87,16 +87,51 @@ class TableLookupService:
                 }
             
             # Use text-only search when searching across multiple indices
-            # (script_score with vectors doesn't work well with wildcard patterns)
+            # For lifecycle queries, prioritize chunks with "Product life cycle dates" or "lifecycle"
+            # This ensures we find the actual lifecycle table, not just mentions of dates
             search_body = {
                 "size": 10,  # Get top 10 chunks
                 "_source": ["text", "metadata"],
                 "query": {
-                    "multi_match": {
-                        "query": search_query,
-                        "fields": ["text^2", "metadata.filename"],
-                        "type": "best_fields",
-                        "operator": "or"
+                    "bool": {
+                        "should": [
+                            # Highest priority: chunks with "Product life cycle dates" (the table header)
+                            {
+                                "match_phrase": {
+                                    "text": {
+                                        "query": "Product life cycle dates",
+                                        "boost": 10.0
+                                    }
+                                }
+                            },
+                            # High priority: chunks with "lifecycle" keyword
+                            {
+                                "match": {
+                                    "text": {
+                                        "query": "lifecycle",
+                                        "boost": 5.0
+                                    }
+                                }
+                            },
+                            # Medium priority: chunks with the MTM (if we have it)
+                            {
+                                "match": {
+                                    "text": {
+                                        "query": server_mtm if server_mtm else model,
+                                        "boost": 3.0
+                                    }
+                                }
+                            },
+                            # Lower priority: general search terms
+                            {
+                                "multi_match": {
+                                    "query": search_query,
+                                    "fields": ["text", "metadata.filename"],
+                                    "boost": 1.0
+                                }
+                            }
+                        ],
+                        "minimum_should_match": 1
                     }
                 }
             }
@@ -236,40 +271,39 @@ class TableLookupService:
         relevant_texts = []
         lifecycle_texts = []
         
-        logger.info(f"Examining {len(hits)} chunks for lifecycle data")
+        logger.info(f"Examining {len(hits)} chunks for lifecycle table")
         for i, hit in enumerate(hits[:10]):  # Check top 10 chunks
             text = hit['_source'].get('text', '')
             metadata = hit['_source'].get('metadata', {})
             score = hit.get('_score', 0)
             
-            logger.info(f"Chunk {i}: score={score:.3f}, length={len(text)}, has_model={model.upper() in text.upper()}, has_lifecycle={'lifecycle' in text.lower()}")
+            logger.info(f"Chunk {i}: score={score:.3f}, length={len(text)}, has_lifecycle={'lifecycle' in text.lower()}")
             logger.info(f"Chunk {i} preview: {text[:200]}...")
             
             if not text:
                 logger.info(f"Chunk {i}: Skipping empty chunk")
                 continue
             
-            # Don't skip chunks that don't have the model name - they might have the MTM
-            # or be part of a table that spans multiple chunks
-            
-            # Prioritize chunks that contain lifecycle information
+            # For table lookup queries, we ONLY want the lifecycle table chunk
+            # Stop as soon as we find it
             text_lower = text.lower()
-            if 'lifecycle' in text_lower or 'product lifecycle dates' in text_lower:
+            if 'product lifecycle dates' in text_lower or 'product life cycle dates' in text_lower:
                 lifecycle_texts.append(text)
-                logger.info(f"Chunk {i}: Added to lifecycle_texts ({len(text)} chars)")
-            elif len(relevant_texts) < 5:  # Keep up to 5 chunks as backup (increased from 3)
-                relevant_texts.append(text)
-                logger.info(f"Chunk {i}: Added to relevant_texts ({len(text)} chars)")
+                logger.info(f"Chunk {i}: Found lifecycle table! ({len(text)} chars) - stopping search")
+                break  # Found the table, no need to look further
+            elif 'lifecycle' in text_lower and len(lifecycle_texts) == 0:
+                # Backup: keep first chunk with "lifecycle" if we haven't found the table yet
+                lifecycle_texts.append(text)
+                logger.info(f"Chunk {i}: Added lifecycle chunk as backup ({len(text)} chars)")
         
-        # Use lifecycle chunks if found, otherwise use regular chunks
-        texts_to_use = lifecycle_texts if lifecycle_texts else relevant_texts
-        
-        if not texts_to_use:
+        # For table lookup, we should have found the lifecycle table
+        if not lifecycle_texts:
+            logger.warning(f"No lifecycle table found for {model}")
             return f"No specific lifecycle information found for {model} in the sales manuals."
         
-        # Combine the texts (limit to first 2 lifecycle chunks to avoid huge text)
-        combined_text = '\n\n'.join(texts_to_use[:2])
-        logger.info(f"Using {len(texts_to_use[:2])} chunks, combined length: {len(combined_text)} chars")
+        # Use ONLY the lifecycle table chunk (first one found)
+        combined_text = lifecycle_texts[0]
+        logger.info(f"Using lifecycle table chunk: {len(combined_text)} chars")
         
         # Extract specific information based on field
         if field:
