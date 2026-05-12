@@ -706,21 +706,22 @@ def search():
         
         logger.info(f"Searching in collection {collection_name} for: {question}")
         
-        # Step 1: Classify the query
+        # Step 1: Classify the query and extract entities
         classifier = get_query_classifier()
-        classification = classifier.classify(question)
+        classification = classifier.get_query_intent(question)
         
         logger.info(f"Query classified as: {classification['query_type']}")
-        logger.info(f"Entities: {classification.get('entities', {})}")
+        logger.info(f"Entities: server_model={classification.get('server_model')}, mtm={classification.get('mtm')}, lifecycle_field={classification.get('lifecycle_field')}")
         
         # Step 2: Route based on classification
-        if classification['query_type'] == QueryType.TABLE_LOOKUP:
+        if classification['query_type'] == 'table_lookup':
             # Direct table lookup from OpenSearch - no LLM generation needed
             table_service = get_table_lookup_service()
             result = table_service.lookup(
-                server_model=classification['entities'].get('server_model'),
-                field=classification['entities'].get('field'),
-                collection_name=collection_name
+                server_model=classification.get('server_model'),
+                field=classification.get('lifecycle_field'),
+                collection_name=collection_name,
+                server_mtm=classification.get('mtm')
             )
             
             if not result.get('success'):
@@ -749,7 +750,7 @@ def search():
                 'classification': classification
             })
         
-        elif classification['query_type'] == QueryType.METADATA_LOOKUP:
+        elif classification['query_type'] == 'metadata_lookup':
             # Metadata-based search (e.g., feature codes, withdrawal dates)
             # Use OpenSearch metadata filters
             client = get_opensearch_client()
@@ -762,14 +763,14 @@ def search():
             must_clauses = [{"match": {"text": question}}]
             
             # Add entity filters if available
-            if 'server_model' in classification['entities']:
+            if classification.get('server_model'):
                 must_clauses.append({
-                    "match": {"metadata.server_model": classification['entities']['server_model']}
+                    "match": {"metadata.server_model": classification['server_model']}
                 })
             
-            if 'feature_code' in classification['entities']:
+            if classification.get('feature_code'):
                 must_clauses.append({
-                    "match": {"metadata.feature_codes": classification['entities']['feature_code']}
+                    "match": {"metadata.feature_codes": classification['feature_code']}
                 })
             
             search_body = {
@@ -855,7 +856,7 @@ def search():
             logger.info(f"Vector search found {len(hits)} results")
         
         # Step 3: Apply reranking if enabled and we have RAG/metadata results
-        if use_reranking and classification['query_type'] != QueryType.TABLE_LOOKUP and len(hits) > 0:
+        if use_reranking and classification['query_type'] != 'table_lookup' and len(hits) > 0:
             reranker = get_reranker_service()
             
             # Extract texts for reranking
@@ -881,17 +882,17 @@ def search():
                 'metadata': source.get("metadata", {}),
                 'score': float(hit.get("_score", 0)),
                 'rank': i + 1,
-                'reranked': use_reranking and classification['query_type'] != QueryType.TABLE_LOOKUP
+                'reranked': use_reranking and classification['query_type'] != 'table_lookup'
             }
             formatted_results.append(result)
         
         return jsonify({
             'success': True,
-            'query_type': classification['query_type'].value,
+            'query_type': classification['query_type'],
             'results': formatted_results,
             'count': len(formatted_results),
             'classification': classification,
-            'reranking_applied': use_reranking and classification['query_type'] != QueryType.TABLE_LOOKUP
+            'reranking_applied': use_reranking and classification['query_type'] != 'table_lookup'
         })
         
     except Exception as e:
