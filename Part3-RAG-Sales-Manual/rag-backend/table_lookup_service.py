@@ -14,6 +14,12 @@ from server_mtm_mapper import get_collection_name_for_model
 logger = logging.getLogger(__name__)
 
 
+def _generate_index_name(collection_name):
+    """Generate OpenSearch index name from collection name"""
+    hash_part = hashlib.md5(collection_name.encode()).hexdigest()
+    return f"rag_{hash_part}"
+
+
 class TableLookupService:
     """Service for direct table lookups from OpenSearch without LLM generation"""
     
@@ -72,23 +78,26 @@ class TableLookupService:
         logger.info(f"Searching OpenSearch for: {search_query}")
         
         try:
-            # Search across ALL rag_* indices since bulk ingestion may have used different collection names
-            # This is more flexible and works regardless of the collection naming scheme used
-            index_pattern = f"{self.index_prefix}_*"
+            # Use the MTM-based collection name to search in the correct index
+            # This ensures we find the lifecycle table for the specific server, not other servers
+            index_name = _generate_index_name(collection_name)
             
-            logger.info(f"Searching across all indices: {index_pattern} (model: {model})")
+            logger.info(f"Searching in specific index: {index_name} (collection: {collection_name})")
             
-            # Check if any indices exist
-            if not self.client.indices.exists(index=index_pattern):
-                return {
-                    'success': False,
-                    'error': f'No sales manual data loaded yet',
-                    'answer': f'Sales manual data not yet loaded. Please wait for bulk ingestion to complete.'
-                }
+            # Check if the index exists
+            if not self.client.indices.exists(index=index_name):
+                logger.warning(f"Index {index_name} does not exist, trying wildcard search")
+                # Fallback to wildcard if specific index doesn't exist
+                index_name = f"{self.index_prefix}_*"
+                if not self.client.indices.exists(index=index_name):
+                    return {
+                        'success': False,
+                        'error': f'No sales manual data loaded for {model}',
+                        'answer': f'Sales manual data not yet loaded for {model}.'
+                    }
             
             # For lifecycle table lookups, search for the exact phrase "Product life cycle dates"
             # This is the header that appears directly above the lifecycle table in all sales manuals
-            # No need to filter by model/MTM - the table contains all MTMs for that server family
             search_body = {
                 "size": 5,  # Only need a few chunks - table should be in first result
                 "_source": ["text", "metadata"],
@@ -99,7 +108,7 @@ class TableLookupService:
                 }
             }
             
-            response = self.client.search(index=index_pattern, body=search_body)
+            response = self.client.search(index=index_name, body=search_body)
             hits = response['hits']['hits']
             
             if not hits:
@@ -420,7 +429,9 @@ class TableLookupService:
                     announced = date_cells[0] if len(date_cells) > 0 else '-'
                     available = date_cells[1] if len(date_cells) > 1 else '-'
                     withdrawn = date_cells[2] if len(date_cells) > 2 else '-'
-                    discontinued = date_cells[4] if len(date_cells) > 4 else '-'  # Skip "Support level changed" at index 3
+                    # Service discontinued is typically at index 4 (after "Support level changed" at index 3)
+                    # But safely check if it exists
+                    discontinued = date_cells[4] if len(date_cells) > 4 else (date_cells[3] if len(date_cells) > 3 else '-')
                     
                     # Store this MTM's data
                     mtm_data = {
