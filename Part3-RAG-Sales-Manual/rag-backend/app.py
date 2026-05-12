@@ -293,7 +293,8 @@ def list_collections():
             # Check if this is a Sales Manual MTM-based index
             is_sales_manual = False
             for mtm in known_mtms:
-                collection_name = f"mtm_{mtm.lower().replace('-', '_')}"
+                # Must match the naming convention used in ingest_scraped_content
+                collection_name = f"{OPENSEARCH_DB_PREFIX}_mtm_{mtm.lower().replace('-', '_')}"
                 expected_index = _generate_index_name(collection_name)
                 if index_name == expected_index:
                     is_sales_manual = True
