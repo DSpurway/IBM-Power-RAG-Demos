@@ -236,18 +236,30 @@ class TableLookupService:
         relevant_texts = []
         lifecycle_texts = []
         
-        for hit in hits[:10]:  # Check top 10 chunks
+        logger.info(f"Examining {len(hits)} chunks for lifecycle data")
+        for i, hit in enumerate(hits[:10]):  # Check top 10 chunks
             text = hit['_source'].get('text', '')
-            if not text or model.upper() not in text.upper():
+            metadata = hit['_source'].get('metadata', {})
+            score = hit.get('_score', 0)
+            
+            logger.info(f"Chunk {i}: score={score:.3f}, length={len(text)}, has_model={model.upper() in text.upper()}, has_lifecycle={'lifecycle' in text.lower()}")
+            logger.info(f"Chunk {i} preview: {text[:200]}...")
+            
+            if not text:
+                logger.info(f"Chunk {i}: Skipping empty chunk")
                 continue
+            
+            # Don't skip chunks that don't have the model name - they might have the MTM
+            # or be part of a table that spans multiple chunks
             
             # Prioritize chunks that contain lifecycle information
             text_lower = text.lower()
             if 'lifecycle' in text_lower or 'product lifecycle dates' in text_lower:
                 lifecycle_texts.append(text)
-                logger.info(f"Found lifecycle chunk ({len(text)} chars)")
-            elif len(relevant_texts) < 3:  # Keep up to 3 non-lifecycle chunks as backup
+                logger.info(f"Chunk {i}: Added to lifecycle_texts ({len(text)} chars)")
+            elif len(relevant_texts) < 5:  # Keep up to 5 chunks as backup (increased from 3)
                 relevant_texts.append(text)
+                logger.info(f"Chunk {i}: Added to relevant_texts ({len(text)} chars)")
         
         # Use lifecycle chunks if found, otherwise use regular chunks
         texts_to_use = lifecycle_texts if lifecycle_texts else relevant_texts
