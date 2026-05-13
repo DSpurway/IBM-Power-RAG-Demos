@@ -380,8 +380,49 @@ class TableLookupService:
         logger.info(f"_parse_lifecycle_table called: model={model}, field={field}, server_mtm={server_mtm}")
         logger.info(f"Text to parse ({len(text)} chars): {text[:500]}...")
         
+        # IMPORTANT: Extract ONLY the lifecycle table section to avoid parsing the entire sales manual
+        # Look for the table start and end markers
+        table_start_pattern = r'Product life ?cycle dates'
+        table_end_patterns = [r'^Abstract$', r'^Introduction$', r'^Overview$', r'^Features$', r'^##', r'^#']
+        
         lines = text.split('\n')
-        logger.info(f"Split into {len(lines)} lines")
+        logger.info(f"Full text has {len(lines)} lines")
+        
+        # Find the lifecycle table section
+        table_start_idx = None
+        table_end_idx = None
+        
+        for i, line in enumerate(lines):
+            if table_start_idx is None and re.search(table_start_pattern, line, re.IGNORECASE):
+                table_start_idx = i
+                logger.info(f"Found lifecycle table start at line {i}")
+                continue
+            
+            if table_start_idx is not None and table_end_idx is None:
+                # Check for end markers
+                for pattern in table_end_patterns:
+                    if re.match(pattern, line.strip(), re.IGNORECASE):
+                        table_end_idx = i
+                        logger.info(f"Found lifecycle table end at line {i} (pattern: {pattern})")
+                        break
+                
+                # Also stop if we've gone 50 lines past the start without finding MTMs
+                if i > table_start_idx + 50:
+                    table_end_idx = i
+                    logger.info(f"Stopping at line {i} (50 lines past start)")
+                    break
+        
+        # Extract only the table section
+        if table_start_idx is not None:
+            if table_end_idx is None:
+                table_end_idx = min(table_start_idx + 50, len(lines))  # Max 50 lines
+            lines = lines[table_start_idx:table_end_idx]
+            logger.info(f"Extracted lifecycle table section: {len(lines)} lines")
+        else:
+            logger.warning("Could not find lifecycle table start marker")
+            # Try to find it anyway in first 100 lines
+            lines = lines[:100]
+            logger.info(f"Using first 100 lines as fallback")
         
         # Look for the "Product lifecycle dates" section
         in_lifecycle_section = False
