@@ -1193,10 +1193,14 @@ def generate():
                 })
             else:
                 # Get MTM for the server model if we have it
+                logger.info(f"DEBUG: query_intent keys: {query_intent.keys()}")
+                logger.info(f"DEBUG: query_intent['mtm'] = {query_intent.get('mtm')}")
                 server_mtm = query_intent.get('mtm')
+                logger.info(f"DEBUG: server_mtm after get = {server_mtm}")
                 if not server_mtm and server_model:
                     from server_mtm_mapper import get_mtm_for_model
                     server_mtm = get_mtm_for_model(server_model)
+                    logger.info(f"DEBUG: server_mtm after lookup = {server_mtm}")
                 
                 result = table_service.query(
                     query=prompt,
