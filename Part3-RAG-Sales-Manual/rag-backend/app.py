@@ -1219,6 +1219,9 @@ def generate():
                         'field': lifecycle_field,
                         'response_time_ms': result.get('response_time_ms', 10),
                         'chunks_found': result.get('chunks_found', 0),
+                        'table_data': result.get('table_data'),
+                        'source_url': result.get('source_url'),
+                        'source_filename': result.get('source_filename'),
                         'ai_services_used': ['watsonx_assistant', 'opensearch'],
                         'processing_method': 'hybrid_table_lookup'
                     })
