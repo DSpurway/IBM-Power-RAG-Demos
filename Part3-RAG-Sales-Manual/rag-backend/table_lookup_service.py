@@ -490,37 +490,50 @@ class TableLookupService:
                     }
                     found_mtms.append(mtm_data)
                     
-                    # If we have a specific MTM, return immediately
+                    # If we have a specific MTM, return immediately with improved format
                     if server_mtm:
-                        mtm_suffix = f" ({server_mtm})"
+                        logger.info(f"Found specific MTM {server_mtm} in table, formatting response")
                         
-                        # If specific field requested, return just that date
+                        # Build the full lifecycle table for this MTM
+                        table_lines = [
+                            f"\n**Lifecycle Information for {line_mtm}:**",
+                            f"• Announced: {announced if announced != '-' else 'Not yet announced'}",
+                            f"• Available: {available if available != '-' else 'Not yet announced'}",
+                            f"• Marketing Withdrawn: {withdrawn if withdrawn != '-' else 'Not yet announced'}",
+                            f"• Service Discontinued: {discontinued if discontinued != '-' else 'Not yet announced'}"
+                        ]
+                        
+                        # If specific field requested, provide direct answer first
                         if field:
                             field_lower = field.lower()
                             if 'announce' in field_lower:
-                                if announced == '-':
-                                    return f"The announcement date for the IBM Power {model}{mtm_suffix} has not been announced yet."
-                                return f"The IBM Power {model}{mtm_suffix} was announced on {announced}."
+                                date_val = announced
+                                field_name = "Announcement date"
                             elif 'available' in field_lower:
-                                if available == '-':
-                                    return f"The availability date for the IBM Power {model}{mtm_suffix} has not been announced yet."
-                                return f"The IBM Power {model}{mtm_suffix} became available on {available}."
+                                date_val = available
+                                field_name = "Availability date"
                             elif 'withdraw' in field_lower:
-                                if withdrawn == '-':
-                                    return f"The marketing withdrawal date for the IBM Power {model}{mtm_suffix} has not been announced yet."
-                                return f"The IBM Power {model}{mtm_suffix} was withdrawn from marketing on {withdrawn}."
+                                date_val = withdrawn
+                                field_name = "Marketing Withdrawal date"
                             elif 'discontinue' in field_lower or 'end_of_support' in field_lower:
-                                if discontinued == '-':
-                                    return f"The service discontinuation date for the IBM Power {model}{mtm_suffix} has not been announced yet."
-                                return f"Support for the IBM Power {model}{mtm_suffix} will be discontinued on {discontinued}."
+                                date_val = discontinued
+                                field_name = "Service Discontinuation date"
+                            else:
+                                date_val = None
+                                field_name = None
+                            
+                            if field_name:
+                                if date_val == '-':
+                                    answer = f"The {field_name} for the {line_mtm} has not been announced yet."
+                                else:
+                                    answer = f"The {field_name} for the {line_mtm} is {date_val}."
+                                
+                                # Add full table for reference
+                                answer += "\n" + '\n'.join(table_lines)
+                                return answer
                         
                         # Return all dates if no specific field
-                        result_lines = [f"IBM Power {model}{mtm_suffix} Lifecycle Dates:"]
-                        result_lines.append(f"• Announced: {announced if announced != '-' else 'Not yet announced'}")
-                        result_lines.append(f"• Available: {available if available != '-' else 'Not yet announced'}")
-                        result_lines.append(f"• Marketing Withdrawn: {withdrawn if withdrawn != '-' else 'Not yet announced'}")
-                        result_lines.append(f"• Service Discontinued: {discontinued if discontinued != '-' else 'Not yet announced'}")
-                        return '\n'.join(result_lines)
+                        return '\n'.join(table_lines)
         
         # If we requested a specific MTM but didn't find it, return error
         if server_mtm and not found_mtms:
