@@ -1,0 +1,23 @@
+spec:
+  template:
+    spec:
+      containers:
+      - name: rag-backend
+        env:
+        - name: WATSON_ASSISTANT_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: watson-assistant-credentials
+              key: api-key
+        - name: WATSON_ASSISTANT_URL
+          valueFrom:
+            secretKeyRef:
+              name: watson-assistant-credentials
+              key: url
+        - name: WATSON_ASSISTANT_ID
+          valueFrom:
+            secretKeyRef:
+              name: watson-assistant-credentials
+              key: assistant-id
+
+# Made with Bob

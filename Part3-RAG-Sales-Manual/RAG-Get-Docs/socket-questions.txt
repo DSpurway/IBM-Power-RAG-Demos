@@ -1,1 +1,0 @@
-"How many dual-chip processor modules in the server?", "How Power10 processors in the server?", "What speed in GHz are the processors in the server?"

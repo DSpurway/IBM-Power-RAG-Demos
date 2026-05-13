@@ -1,0 +1,5 @@
+{
+  "size": 1,
+  "_source": ["text", "metadata"],
+  "query": {"match_all": {}}
+}

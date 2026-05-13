@@ -163,7 +163,7 @@ def extract_feature_codes(text: str) -> List[Dict]:
 
 
 def create_driver():
-    """Create a headless Chromium WebDriver"""
+    """Create a headless Chrome WebDriver"""
     options = Options()
     options.add_argument('--headless')
     options.add_argument('--no-sandbox')
@@ -171,8 +171,10 @@ def create_driver():
     options.add_argument('--disable-gpu')
     options.add_argument('--disable-software-rasterizer')
     options.add_argument('--disable-extensions')
-    options.binary_location = '/usr/bin/chromium-browser'
+    # selenium/standalone-chrome image has Chrome at /opt/google/chrome/chrome
+    options.binary_location = '/opt/google/chrome/chrome'
     
+    # ChromeDriver is at /usr/bin/chromedriver in selenium/standalone-chrome
     service = Service('/usr/bin/chromedriver')
     driver = webdriver.Chrome(service=service, options=options)
     driver.set_page_load_timeout(60)
@@ -358,12 +360,27 @@ def scrape_custom():
     
     wait_time = request.args.get('wait', default=10, type=int)
     
-    result = scrape_ibm_docs_enhanced(url, wait_time=wait_time)
-    
-    if result['success']:
-        return jsonify(result)
-    else:
-        return jsonify(result), 500
+    print(f"Starting scrape for URL: {url}")
+    try:
+        result = scrape_ibm_docs_enhanced(url, wait_time=wait_time)
+        print(f"Scrape completed. Success: {result.get('success', False)}")
+        
+        if result['success']:
+            return jsonify(result)
+        else:
+            print(f"Scrape failed with error: {result.get('error', 'Unknown error')}")
+            if 'traceback' in result:
+                print(f"Traceback:\n{result['traceback']}")
+            return jsonify(result), 500
+    except Exception as e:
+        error_msg = f"Unexpected error in scrape_custom: {str(e)}"
+        print(error_msg)
+        print(traceback.format_exc())
+        return jsonify({
+            'success': False,
+            'error': error_msg,
+            'traceback': traceback.format_exc()
+        }), 500
 
 
 if __name__ == '__main__':
