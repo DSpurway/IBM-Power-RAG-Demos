@@ -5,8 +5,12 @@ and generates collection names for OpenSearch
 """
 
 import logging
+import os
 
 logger = logging.getLogger(__name__)
+
+# Get OpenSearch prefix from environment (same as app.py)
+OPENSEARCH_DB_PREFIX = os.environ.get('OPENSEARCH_DB_PREFIX', 'rag').lower()
 
 # Complete mapping of server models to MTMs
 SERVER_MTM_MAP = {
@@ -76,10 +80,10 @@ def get_collection_name_for_mtm(mtm: str) -> str:
         mtm: MTM string (e.g., "9009-42A")
         
     Returns:
-        Collection name (e.g., "mtm_9009_42a")
+        Collection name (e.g., "rag_mtm_9009_42a")
     """
-    # Convert MTM to collection name format
-    collection_name = f"mtm_{mtm.lower().replace('-', '_')}"
+    # Convert MTM to collection name format with prefix (must match ingestion format)
+    collection_name = f"{OPENSEARCH_DB_PREFIX}_mtm_{mtm.lower().replace('-', '_')}"
     logger.info(f"Generated collection name for MTM {mtm}: {collection_name}")
     return collection_name
 
