@@ -283,7 +283,7 @@ class TableLookupService:
         
         # Extract specific information based on field
         if field:
-            field_info = self._extract_field_from_text(combined_text, model, field)
+            field_info = self._extract_field_from_text(combined_text, model, field, server_mtm)
             if field_info:
                 return field_info
         
@@ -303,7 +303,7 @@ class TableLookupService:
         
         return first_text[:500]  # Return first 500 chars as fallback
     
-    def _extract_field_from_text(self, text: str, model: str, field: Optional[str]) -> Optional[str]:
+    def _extract_field_from_text(self, text: str, model: str, field: Optional[str], server_mtm: Optional[str] = None) -> Optional[str]:
         """
         Extract specific lifecycle field information from text
         Handles both table format and sentence format
@@ -312,12 +312,13 @@ class TableLookupService:
             text: Combined text from chunks
             model: Server model
             field: Lifecycle field to extract (can be None)
+            server_mtm: Server MTM for precise table row matching
             
         Returns:
             Extracted information or None
         """
         # Try to parse table format first (common in sales manuals)
-        table_result = self._parse_lifecycle_table(text, model, field)
+        table_result = self._parse_lifecycle_table(text, model, field, server_mtm)
         if table_result:
             return table_result
         
