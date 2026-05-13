@@ -135,9 +135,11 @@ class TableLookupService:
                 # Look for lifecycle table in the text
                 if 'product lifecycle' in text.lower() or 'lifecycle dates' in text.lower():
                     table_text = text
-                    source_url = metadata.get('source_url') or metadata.get('url')
-                    source_filename = metadata.get('filename')
-                    logger.info(f"Found lifecycle table chunk with source: {source_url}")
+                    # Try multiple possible metadata keys for source URL
+                    source_url = metadata.get('source') or metadata.get('source_url') or metadata.get('url')
+                    source_filename = metadata.get('source_filename') or metadata.get('filename')
+                    logger.info(f"Found lifecycle table chunk with source: {source_url}, filename: {source_filename}")
+                    logger.info(f"Available metadata keys: {list(metadata.keys())}")
                     break
             
             return {
@@ -501,7 +503,7 @@ class TableLookupService:
                         
                         # Build the full lifecycle table for this MTM
                         table_lines = [
-                            f"\n**Lifecycle Information for {line_mtm}:**",
+                            f"\nLifecycle Information for {line_mtm}:",
                             f"• Announced: {announced if announced != '-' else 'Not yet announced'}",
                             f"• Available: {available if available != '-' else 'Not yet announced'}",
                             f"• Marketing Withdrawn: {withdrawn if withdrawn != '-' else 'Not yet announced'}",
