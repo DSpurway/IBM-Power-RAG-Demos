@@ -735,7 +735,7 @@ export default function SalesManualPage() {
                         ) : (
                           <>
                             <Tile style={{ marginTop: '1rem', backgroundColor: '#f4f4f4' }}>
-                              <p>{queryResults.content || queryResults.answer}</p>
+                              <p style={{ whiteSpace: 'pre-line' }}>{queryResults.content || queryResults.answer}</p>
                               
                               {/* Show response time for table lookups */}
                               {queryResults.response_time_ms && (
