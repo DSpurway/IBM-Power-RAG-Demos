@@ -430,6 +430,7 @@ class TableLookupService:
         found_mtms = []
         
         for i, line in enumerate(lines):
+            logger.debug(f"Processing line {i}: {line[:100]}")  # Debug: show each line
             if 'product lifecycle' in line.lower() or 'lifecycle dates' in line.lower():
                 in_lifecycle_section = True
                 logger.info(f"Found Product lifecycle dates section at line {i}")
@@ -440,6 +441,7 @@ class TableLookupService:
                 # Check if line contains an MTM pattern
                 mtm_match = re.search(mtm_pattern, line)
                 if not mtm_match:
+                    logger.debug(f"Line {i} has no MTM match: {line[:100]}")
                     continue
                 
                 line_mtm = mtm_match.group(0)
