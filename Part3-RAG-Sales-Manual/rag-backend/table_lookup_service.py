@@ -431,7 +431,9 @@ class TableLookupService:
         
         for i, line in enumerate(lines):
             logger.info(f"Processing line {i}: {line[:100]}")  # Show each line
-            if 'product lifecycle' in line.lower() or 'lifecycle dates' in line.lower():
+            line_lower = line.lower()
+            # Match both "lifecycle dates" and "life cycle dates" (with space)
+            if 'product lifecycle' in line_lower or 'lifecycle dates' in line_lower or 'life cycle dates' in line_lower:
                 in_lifecycle_section = True
                 logger.info(f"Found Product lifecycle dates section at line {i}, in_lifecycle_section={in_lifecycle_section}")
                 continue
