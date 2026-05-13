@@ -58,6 +58,8 @@ class TableLookupService:
                 'answer': 'Service not properly configured'
             }
         
+        logger.info(f"DEBUG lookup(): server_model={server_model}, field={field}, server_mtm={server_mtm}")
+        
         # Normalize model name
         model = self._normalize_model(server_model)
         
@@ -180,7 +182,9 @@ class TableLookupService:
                 'query': query
             }
         
+        logger.info(f"DEBUG query(): server_model={server_model}, lifecycle_field={lifecycle_field}, server_mtm={server_mtm}")
         result = self.lookup(server_model, lifecycle_field, server_mtm=server_mtm)
+        logger.info(f"DEBUG query(): after lookup, result keys={result.keys()}")
         result['query'] = query
         result['method'] = 'table_lookup'
         result['response_time_ms'] = 10  # Approximate
