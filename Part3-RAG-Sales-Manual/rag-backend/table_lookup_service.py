@@ -290,7 +290,7 @@ class TableLookupService:
         
         # Last resort: return a cleaned version of the most relevant chunk
         # Try to extract just the lifecycle table portion
-        first_text = relevant_texts[0]
+        first_text = lifecycle_texts[0]  # Fixed: use lifecycle_texts instead of relevant_texts
         # Look for lines with dates
         lines = first_text.split('\n')
         date_lines = [line for line in lines if re.search(r'\d{4}-\d{2}-\d{2}', line)]
@@ -515,6 +515,11 @@ class TableLookupService:
                         result_lines.append(f"• Marketing Withdrawn: {withdrawn if withdrawn != '-' else 'Not yet announced'}")
                         result_lines.append(f"• Service Discontinued: {discontinued if discontinued != '-' else 'Not yet announced'}")
                         return '\n'.join(result_lines)
+        
+        # If we requested a specific MTM but didn't find it, return error
+        if server_mtm and not found_mtms:
+            logger.warning(f"Requested MTM {server_mtm} not found in lifecycle table for {model}")
+            return f"The MTM {server_mtm} was not found in the lifecycle table. This may indicate the wrong sales manual was retrieved."
         
         # If no specific MTM was requested but we found MTMs, return summary of all
         if found_mtms and not server_mtm:
