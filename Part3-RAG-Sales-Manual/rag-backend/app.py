@@ -706,12 +706,32 @@ def search():
         
         logger.info(f"Searching in collection {collection_name} for: {question}")
         
-        # Step 1: Classify the query and extract entities
-        classifier = get_query_classifier()
-        classification = classifier.get_query_intent(question)
+        # Determine if this is a simple collection (like Harry Potter) or complex (sales manuals)
+        is_sales_manual_collection = 'sales_manual' in collection_name.lower() or collection_name.startswith('ibm_power_')
         
-        logger.info(f"Query classified as: {classification['query_type']}")
-        logger.info(f"Entities: server_model={classification.get('server_model')}, mtm={classification.get('mtm')}, lifecycle_field={classification.get('lifecycle_field')}")
+        # Step 1: Classify the query and extract entities (only for sales manual collections)
+        classification = None
+        if is_sales_manual_collection:
+            classifier = get_query_classifier()
+            classification = classifier.get_query_intent(question)
+            
+            logger.info(f"Query classified as: {classification['query_type']}")
+            logger.info(f"Entities: server_model={classification.get('server_model')}, mtm={classification.get('mtm')}, lifecycle_field={classification.get('lifecycle_field')}")
+        else:
+            # Simple collection - skip classification, use basic RAG
+            logger.info(f"Simple collection detected, skipping classification")
+            classification = {
+                'query_type': 'rag',
+                'original_query': question,
+                'server_model': None,
+                'mtm': None,
+                'feature_code': None,
+                'lifecycle_field': None
+            }
+            # Use dense search by default for simple collections (more reliable)
+            if mode == 'hybrid':
+                mode = 'dense'
+                logger.info(f"Switching to dense mode for simple collection")
         
         # Step 2: Route based on classification
         if classification['query_type'] == 'table_lookup':
@@ -863,12 +883,34 @@ def search():
                     }
                 }
             
-            # Execute search
-            params = {"search_pipeline": "hybrid_pipeline"} if mode == "hybrid" else {}
-            response = client.search(index=index_name, body=search_body, params=params)
-            hits = response['hits']['hits']
-            
-            logger.info(f"Vector search found {len(hits)} results")
+            # Execute search with fallback to dense if hybrid fails
+            try:
+                params = {"search_pipeline": "hybrid_pipeline"} if mode == "hybrid" else {}
+                response = client.search(index=index_name, body=search_body, params=params)
+                hits = response['hits']['hits']
+                logger.info(f"{mode.upper()} search found {len(hits)} results")
+            except Exception as search_error:
+                if mode == "hybrid":
+                    # Hybrid search failed, fall back to dense search
+                    logger.warning(f"Hybrid search failed: {search_error}. Falling back to dense search.")
+                    search_body = {
+                        "size": retrieval_k,
+                        "_source": ["chunk_id", "text", "metadata"],
+                        "query": {
+                            "knn": {
+                                "embedding": {
+                                    "vector": query_vector,
+                                    "k": retrieval_k
+                                }
+                            }
+                        }
+                    }
+                    response = client.search(index=index_name, body=search_body)
+                    hits = response['hits']['hits']
+                    logger.info(f"Dense fallback search found {len(hits)} results")
+                else:
+                    # Re-raise if not hybrid mode
+                    raise
         
         # Step 3: Apply reranking if enabled and we have RAG/metadata results
         if use_reranking and classification['query_type'] != 'table_lookup' and len(hits) > 0:
