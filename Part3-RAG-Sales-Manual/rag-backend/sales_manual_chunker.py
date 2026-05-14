@@ -79,16 +79,19 @@ class SalesManualChunker:
         This enables fast, accurate responses without LLM
         """
         # Look for "Product lifecycle dates" or "Product life cycle dates"
-        # Extract only the table header and rows, stopping at the next section (Abstract, Highlights, etc.)
-        table_pattern = r'Product\s+life\s*cycle\s+dates\s*\n+(\|.*?\|(?:\n\|.*?\|)*)\s*(?=\n\n(?:Abstract|Highlights|Description|Product positioning|Models|Technical description|Accessories|$))'
-        match = re.search(table_pattern, text, re.DOTALL | re.IGNORECASE)
+        # Extract ONLY the table rows (lines starting with |), nothing else
+        table_pattern = r'Product\s+life\s*cycle\s+dates\s*\n+((?:\|[^\n]+\|\n?)+)'
+        match = re.search(table_pattern, text, re.IGNORECASE)
         
         if not match:
             logger.warning(f"No lifecycle table found for {mtm}")
             return None
         
-        # Extract just the header line and the table content
-        table_text = "Product life cycle dates\n" + match.group(1).strip()
+        # Extract just the table rows (all lines starting with |)
+        table_rows = match.group(1).strip()
+        
+        # Build clean table with header
+        table_text = "Product life cycle dates\n" + table_rows
         
         # Check if it's already in table format (with | separators)
         if '|' in table_text:
