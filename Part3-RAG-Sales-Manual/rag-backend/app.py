@@ -916,14 +916,14 @@ def search():
         if use_reranking and classification['query_type'] != 'table_lookup' and len(hits) > 0:
             reranker = get_reranker_service()
             
-            # Extract texts for reranking
-            texts = [hit["_source"].get("text", "") for hit in hits]
+            # Prepare chunks for reranking (reranker expects list of dicts with 'text' field)
+            chunks = [{"text": hit["_source"].get("text", ""), "hit": hit} for hit in hits]
             
-            # Rerank
-            reranked_indices = reranker.rerank(question, texts, top_k=k)
+            # Rerank - returns reranked chunks
+            reranked_chunks = reranker.rerank(question, chunks, top_k=k)
             
-            # Reorder hits based on reranking
-            reranked_hits = [hits[i] for i in reranked_indices]
+            # Extract the original hits from reranked chunks
+            reranked_hits = [chunk["hit"] for chunk in reranked_chunks]
             
             logger.info(f"Reranked to top {len(reranked_hits)} results")
         else:
