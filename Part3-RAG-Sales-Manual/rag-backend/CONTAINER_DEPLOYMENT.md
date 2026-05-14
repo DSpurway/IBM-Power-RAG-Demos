@@ -80,16 +80,16 @@ cd ../RAG-with-Notebook/rag-backend
 
 ```bash
 # 1. Create build configuration
-oc new-build --name=rag-backend-opensearch \
+oc new-build --name=rag-backend \
   --binary \
   --strategy=docker \
   --dockerfile=Dockerfile.opensearch
 
 # 2. Start build from current directory
-oc start-build rag-backend-opensearch --from-dir=. --follow
+oc start-build rag-backend --from-dir=. --follow
 
 # 3. Create deployment
-oc new-app rag-backend-opensearch \
+oc new-app rag-backend \
   -e OPENSEARCH_HOST=opensearch-service \
   -e OPENSEARCH_PORT=9200 \
   -e OPENSEARCH_USERNAME=admin \
@@ -98,7 +98,7 @@ oc new-app rag-backend-opensearch \
   -e LLAMA_PORT=8080
 
 # 4. Expose service
-oc expose svc/rag-backend-opensearch
+oc expose svc/rag-backend
 ```
 
 ### Method 3: Local Docker Build + Push
@@ -107,16 +107,16 @@ If you want to build locally and push to a registry:
 
 ```bash
 # 1. Build locally
-docker build -f Dockerfile.opensearch -t rag-backend-opensearch:latest .
+docker build -f Dockerfile.opensearch -t rag-backend:latest .
 
 # 2. Tag for your registry
-docker tag rag-backend-opensearch:latest your-registry/rag-backend-opensearch:latest
+docker tag rag-backend:latest your-registry/rag-backend:latest
 
 # 3. Push to registry
-docker push your-registry/rag-backend-opensearch:latest
+docker push your-registry/rag-backend:latest
 
 # 4. Deploy in OpenShift
-oc new-app your-registry/rag-backend-opensearch:latest \
+oc new-app your-registry/rag-backend:latest \
   -e OPENSEARCH_HOST=opensearch-service \
   -e OPENSEARCH_PORT=9200
 ```
@@ -129,7 +129,7 @@ oc new-app https://github.com/your-org/your-repo.git \
   --context-dir=RAG-with-Notebook/rag-backend \
   --strategy=docker \
   --dockerfile=Dockerfile.opensearch \
-  --name=rag-backend-opensearch
+  --name=rag-backend
 ```
 
 ## Container Configuration
@@ -209,7 +209,7 @@ readinessProbe:
 
 ```bash
 # Watch build logs
-oc logs -f bc/rag-backend-opensearch
+oc logs -f bc/rag-backend
 
 # Check build status
 oc get builds
@@ -219,10 +219,10 @@ oc get builds
 
 ```bash
 # Check pod status
-oc get pods -l app=rag-backend-opensearch
+oc get pods -l app=rag-backend
 
 # View pod logs
-oc logs -f deployment/rag-backend-opensearch
+oc logs -f deployment/rag-backend
 
 # Check events
 oc get events --sort-by='.lastTimestamp'
@@ -232,7 +232,7 @@ oc get events --sort-by='.lastTimestamp'
 
 ```bash
 # Get the route URL
-BACKEND_URL=$(oc get route rag-backend-opensearch -o jsonpath='{.spec.host}')
+BACKEND_URL=$(oc get route rag-backend -o jsonpath='{.spec.host}')
 
 # Test health endpoint
 curl https://$BACKEND_URL/health
@@ -251,7 +251,7 @@ curl https://$BACKEND_URL/health
 
 ```bash
 # Make your code changes, then:
-oc start-build rag-backend-opensearch --from-dir=. --follow
+oc start-build rag-backend --from-dir=. --follow
 
 # The deployment will automatically use the new image
 ```
@@ -260,10 +260,10 @@ oc start-build rag-backend-opensearch --from-dir=. --follow
 
 ```bash
 # If the deployment doesn't pick up the new image:
-oc rollout restart deployment/rag-backend-opensearch
+oc rollout restart deployment/rag-backend
 
 # Watch the rollout
-oc rollout status deployment/rag-backend-opensearch
+oc rollout status deployment/rag-backend
 ```
 
 ## Container Logs
@@ -272,17 +272,17 @@ oc rollout status deployment/rag-backend-opensearch
 
 ```bash
 # Follow logs from all pods
-oc logs -f deployment/rag-backend-opensearch
+oc logs -f deployment/rag-backend
 
 # View logs from specific pod
-oc logs -f pod/rag-backend-opensearch-xxxxx
+oc logs -f pod/rag-backend-xxxxx
 ```
 
 ### Debug Container Issues
 
 ```bash
 # Get shell access to running container
-oc rsh deployment/rag-backend-opensearch
+oc rsh deployment/rag-backend
 
 # Inside container, check:
 python --version                    # Python 3.12
@@ -297,10 +297,10 @@ curl http://opensearch-service:9200 # OpenSearch connectivity
 
 ```bash
 # Scale to multiple replicas
-oc scale deployment/rag-backend-opensearch --replicas=3
+oc scale deployment/rag-backend --replicas=3
 
 # Auto-scaling based on CPU
-oc autoscale deployment/rag-backend-opensearch \
+oc autoscale deployment/rag-backend \
   --min=2 --max=5 --cpu-percent=70
 ```
 
@@ -308,7 +308,7 @@ oc autoscale deployment/rag-backend-opensearch \
 
 ```bash
 # Update resource limits
-oc set resources deployment/rag-backend-opensearch \
+oc set resources deployment/rag-backend \
   --requests=cpu=1,memory=4Gi \
   --limits=cpu=2,memory=8Gi
 ```
@@ -336,7 +336,7 @@ securityContext:
 
 ```bash
 # Check build logs
-oc logs -f bc/rag-backend-opensearch
+oc logs -f bc/rag-backend
 
 # Common issues:
 # - Network timeout downloading wheels
@@ -348,7 +348,7 @@ oc logs -f bc/rag-backend-opensearch
 
 ```bash
 # Check pod status
-oc describe pod -l app=rag-backend-opensearch
+oc describe pod -l app=rag-backend
 
 # Common issues:
 # - OpenSearch not accessible
@@ -361,7 +361,7 @@ oc describe pod -l app=rag-backend-opensearch
 
 ```bash
 # Test OpenSearch from container
-oc rsh deployment/rag-backend-opensearch
+oc rsh deployment/rag-backend
 curl -k https://opensearch-service:9200
 
 # Test LLM service
@@ -373,7 +373,7 @@ curl http://llama-service:8080/health
 ### Update Application Code
 
 1. Modify `app_opensearch.py`
-2. Rebuild: `oc start-build rag-backend-opensearch --from-dir=. --follow`
+2. Rebuild: `oc start-build rag-backend --from-dir=. --follow`
 3. Verify: Check logs and test endpoints
 
 ### Update Dependencies
@@ -391,7 +391,7 @@ The Dockerfile uses `registry.access.redhat.com/ubi9/python-312:latest`. To upda
 oc import-image ubi9/python-312:latest --from=registry.access.redhat.com/ubi9/python-312:latest --confirm
 
 # Rebuild
-oc start-build rag-backend-opensearch --from-dir=. --follow
+oc start-build rag-backend --from-dir=. --follow
 ```
 
 ## Production Considerations
@@ -429,7 +429,7 @@ volumes:
 curl https://$BACKEND_URL/metrics
 
 # Resource usage
-oc adm top pods -l app=rag-backend-opensearch
+oc adm top pods -l app=rag-backend
 ```
 
 ## Summary

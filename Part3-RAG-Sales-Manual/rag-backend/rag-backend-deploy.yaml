@@ -9,10 +9,12 @@ spec:
   selector:
     matchLabels:
       app: rag-backend
+      deployment: rag-backend
   template:
     metadata:
       labels:
         app: rag-backend
+        deployment: rag-backend
     spec:
       containers:
         - name: rag-backend
@@ -23,10 +25,28 @@ spec:
               name: http
               protocol: TCP
           env:
-            - name: CHROMA_PERSIST_DIR
-              value: "/app/chroma_db"
-            - name: LLAMA_HOST
+            # OpenSearch Configuration
+            - name: OPENSEARCH_HOST
+              value: "opensearch-service"
+            - name: OPENSEARCH_PORT
+              value: "9200"
+            - name: OPENSEARCH_USERNAME
+              value: "admin"
+            - name: OPENSEARCH_PASSWORD
+              value: "admin"
+            # Granite Service (for complex RAG queries - Part 3)
+            - name: GRANITE_HOST
+              value: "granite-service"
+            - name: GRANITE_PORT
+              value: "8080"
+            # TinyLlama Service (for simple queries - Part 1 & 2)
+            - name: TINYLLAMA_HOST
               value: "llama-service"
+            - name: TINYLLAMA_PORT
+              value: "8080"
+            # Legacy support - defaults to Granite
+            - name: LLAMA_HOST
+              value: "granite-service"
             - name: LLAMA_PORT
               value: "8080"
             - name: PDF_DIR

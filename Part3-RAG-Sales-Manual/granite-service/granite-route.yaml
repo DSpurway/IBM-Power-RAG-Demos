@@ -1,16 +1,16 @@
 apiVersion: route.openshift.io/v1
 kind: Route
 metadata:
-  name: rag-backend
+  name: granite-service
   labels:
-    app: rag-backend
+    app: granite-service
 spec:
   to:
     kind: Service
-    name: rag-backend
+    name: granite-service
     weight: 100
   port:
-    targetPort: 8080-tcp
+    targetPort: http
   tls:
     termination: edge
     insecureEdgeTerminationPolicy: Redirect

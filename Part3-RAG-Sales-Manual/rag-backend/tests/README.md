@@ -31,20 +31,20 @@ Find your RAG backend's external route URL:
 
 ```powershell
 # Using oc CLI
-oc get route rag-backend-opensearch -n <namespace>
+oc get route rag-backend -n <namespace>
 
 # Example output:
 # NAME                      HOST/PORT
-# rag-backend-opensearch    rag-backend-opensearch-llm-on-techzone.apps.p1234.cecc.ihost.com
+# rag-backend    rag-backend-llm-on-techzone.apps.p1234.cecc.ihost.com
 ```
 
-Your URL will be: `https://rag-backend-opensearch-llm-on-techzone.apps.p1234.cecc.ihost.com`
+Your URL will be: `https://rag-backend-llm-on-techzone.apps.p1234.cecc.ihost.com`
 
 ### 2. Set Environment Variable (Optional)
 
 ```powershell
 # Set for current session
-$env:RAG_BACKEND_URL = "https://rag-backend-opensearch-<namespace>.<domain>"
+$env:RAG_BACKEND_URL = "https://rag-backend-<namespace>.<domain>"
 
 # Or set permanently (Windows)
 [System.Environment]::SetEnvironmentVariable('RAG_BACKEND_URL', 'https://your-url-here', 'User')
@@ -238,7 +238,7 @@ All test scripts support these parameters:
 
 ### Basic Health Check
 ```powershell
-.\Test-Health.ps1 -RagBackendUrl "https://rag-backend-opensearch-llm-on-techzone.apps.p1234.cecc.ihost.com"
+.\Test-Health.ps1 -RagBackendUrl "https://rag-backend-llm-on-techzone.apps.p1234.cecc.ihost.com"
 ```
 
 ### Load PDFs and Test Search
@@ -290,7 +290,7 @@ Each test displays:
 ========================================
 RAG Backend Health Check Tests
 ========================================
-Backend URL: https://rag-backend-opensearch-llm-on-techzone.apps.p1234.cecc.ihost.com
+Backend URL: https://rag-backend-llm-on-techzone.apps.p1234.cecc.ihost.com
 SSL Verify: Disabled
 Timeout: 60s
 
@@ -335,10 +335,10 @@ All tests passed!
 $env:RAG_BACKEND_URL
 
 # Test basic connectivity
-Test-NetConnection -ComputerName "rag-backend-opensearch-namespace.apps.domain.com" -Port 443
+Test-NetConnection -ComputerName "rag-backend-namespace.apps.domain.com" -Port 443
 
 # Check if route exists
-oc get route rag-backend-opensearch
+oc get route rag-backend
 ```
 
 #### 2. "The underlying connection was closed: Could not establish trust relationship"
@@ -385,7 +385,7 @@ oc logs -l app=llama-service --tail=50
 **Solution:**
 ```powershell
 # Check if PDFs exist in pod
-oc exec -it deployment/rag-backend-opensearch -- ls -la /app/pdfs/
+oc exec -it deployment/rag-backend -- ls -la /app/pdfs/
 
 # If missing, rebuild container with PDFs
 ```
@@ -399,7 +399,7 @@ oc exec -it deployment/rag-backend-opensearch -- ls -la /app/pdfs/
 .\Test-PdfLoading.ps1 -RagBackendUrl "https://your-url" -TimeoutSeconds 180
 
 # Check pod logs for actual progress
-oc logs -f deployment/rag-backend-opensearch
+oc logs -f deployment/rag-backend
 ```
 
 ### PowerShell Execution Policy
@@ -474,7 +474,7 @@ steps:
 
 For issues or questions:
 1. Check the [Troubleshooting](#troubleshooting) section
-2. Review pod logs: `oc logs -f deployment/rag-backend-opensearch`
+2. Review pod logs: `oc logs -f deployment/rag-backend`
 3. Check OpenSearch logs: `oc logs -f deployment/opensearch`
 4. Verify network connectivity and routes
 

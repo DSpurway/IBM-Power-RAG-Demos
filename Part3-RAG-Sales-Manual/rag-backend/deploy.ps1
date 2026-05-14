@@ -1,10 +1,10 @@
-# Deploy RAG Backend with OpenSearch to OpenShift (PowerShell)
+# Deploy RAG Backend to OpenShift (PowerShell)
 # This script deploys the backend service that connects to an existing OpenSearch cluster
 
 $ErrorActionPreference = "Stop"
 
 Write-Host "==========================================" -ForegroundColor Cyan
-Write-Host "RAG Backend with OpenSearch Deployment" -ForegroundColor Cyan
+Write-Host "RAG Backend Deployment" -ForegroundColor Cyan
 Write-Host "==========================================" -ForegroundColor Cyan
 
 # Check if logged into OpenShift
@@ -19,11 +19,15 @@ $PROJECT = oc project -q
 Write-Host "Deploying to project: $PROJECT" -ForegroundColor Green
 
 # Configuration
-$APP_NAME = "rag-backend-opensearch"
+$APP_NAME = "rag-backend"
 $IMAGE_NAME = "${APP_NAME}:latest"
 
 Write-Host ""
-Write-Host "Step 1: Creating BuildConfig..." -ForegroundColor Yellow
+Write-Host "Step 1: Ensuring clean BuildConfig..." -ForegroundColor Yellow
+# Delete existing BuildConfig to avoid git/binary conflicts
+oc delete buildconfig $APP_NAME --ignore-not-found=true
+
+Write-Host "Creating BuildConfig..." -ForegroundColor Yellow
 @"
 apiVersion: build.openshift.io/v1
 kind: BuildConfig
@@ -40,7 +44,7 @@ spec:
   strategy:
     type: Docker
     dockerStrategy:
-      dockerfilePath: Dockerfile.opensearch
+      dockerfilePath: Dockerfile
   triggers: []
 "@ | oc apply -f -
 
@@ -66,10 +70,12 @@ spec:
   selector:
     matchLabels:
       app: $APP_NAME
+      deployment: $APP_NAME
   template:
     metadata:
       labels:
         app: $APP_NAME
+        deployment: $APP_NAME
     spec:
       containers:
       - name: rag-backend
@@ -140,6 +146,7 @@ spec:
     name: http
   selector:
     app: $APP_NAME
+    deployment: $APP_NAME
   type: ClusterIP
 "@ | oc apply -f -
 

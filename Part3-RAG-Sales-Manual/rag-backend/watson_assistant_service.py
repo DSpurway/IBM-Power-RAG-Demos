@@ -411,12 +411,30 @@ class WatsonAssistantService:
             intent_name = top_intent.get('intent', '')
             confidence = top_intent.get('confidence', 0)
             
-            # Your Watson uses "Check_Date" intent for lifecycle queries!
+            # Map Watson intents to query types
             if intent_name == 'Check_Date':
+                # Lifecycle date queries (announced, available, withdrawn, etc.)
                 query_type = 'table_lookup'
                 logger.info(f"Watson detected Check_Date intent → TABLE_LOOKUP")
+            elif intent_name == 'feature_code_query':
+                # Feature code availability queries
+                # Need to distinguish between activation and physical features
+                # Check if query mentions "activation" - if so, it's activation_lookup
+                # Otherwise, it's physical_feature_lookup
+                query_lower = query.lower()
+                if 'activation' in query_lower or 'activations' in query_lower:
+                    query_type = 'activation_lookup'
+                    logger.info(f"Watson detected feature_code_query intent (activation) → ACTIVATION_LOOKUP")
+                else:
+                    query_type = 'physical_feature_lookup'
+                    logger.info(f"Watson detected feature_code_query intent (physical) → PHYSICAL_FEATURE_LOOKUP")
             elif intent_name == 'Technical_Question':
-                # Could be metadata lookup or RAG
+                # General technical questions - use full RAG
+                query_type = 'rag'
+                logger.info(f"Watson detected Technical_Question intent → RAG")
+            else:
+                # Unknown intent - default to RAG
+                logger.info(f"Watson detected unknown intent '{intent_name}' → RAG (default)")
                 query_type = 'rag'
         
         # Extract entities using your Watson's format

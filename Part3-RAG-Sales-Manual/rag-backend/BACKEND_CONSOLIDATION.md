@@ -52,10 +52,10 @@ The consolidated OpenSearch backend includes:
 ### 4. Deployment
 
 **Current Deployment**:
-- BuildConfig: `rag-backend-opensearch`
+- BuildConfig: `rag-backend`
 - Deployment: `rag-backend`
 - Service: `rag-backend`
-- Image: `rag-backend-opensearch:latest`
+- Image: `rag-backend:latest`
 
 **Quick Deploy**:
 ```bash
@@ -65,7 +65,7 @@ cd rag-backend
 
 Or manually:
 ```bash
-oc start-build rag-backend-opensearch --from-dir=. --follow
+oc start-build rag-backend --from-dir=. --follow
 ```
 
 ### 5. Environment Variables

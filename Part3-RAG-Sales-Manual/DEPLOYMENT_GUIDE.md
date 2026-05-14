@@ -49,6 +49,67 @@ oc set env deployment/rag-webpage NAMESPACE=your-project-name
 oc set env deployment/rag-webpage BASE_DOMAIN=apps.pXXXX.cecc.ihost.com
 ```
 
+## LLM Services
+
+This demo uses two LLM services for different purposes:
+
+### TinyLlama Service (Part 1 & 2)
+- Used for basic demonstrations and simple lifecycle queries
+- Smaller model (~1.1B parameters)
+- Faster responses but may hallucinate
+- Already deployed in Part 1
+
+### Granite Service (Part 3 - Complex Queries)
+- Used for complex technical questions and sales queries
+- Larger model (~4B parameters - Granite 4.0 Micro)
+- Better reasoning and accuracy
+- **Required for Part 3 advanced features**
+
+### Deploying the Granite Service
+
+The Granite service must be deployed before using Part 3's advanced query features:
+
+```bash
+# Navigate to the granite-service directory
+cd Part3-RAG-Sales-Manual/granite-service
+
+# Deploy using the provided script
+# Linux/Mac:
+chmod +x deploy.sh
+./deploy.sh
+
+# Windows (PowerShell):
+.\deploy.ps1
+```
+
+**Manual deployment:**
+```bash
+# Build the container image
+oc new-build --name=granite-service --binary --strategy=docker
+oc start-build granite-service --from-dir=. --follow
+
+# Deploy the service
+oc apply -f granite-deploy.yaml
+oc apply -f granite-svc.yaml
+oc apply -f granite-route.yaml
+
+# Wait for deployment
+oc rollout status deployment/granite-service
+```
+
+**Verify deployment:**
+```bash
+# Check pod status
+oc get pods -l app=granite-service
+
+# Test health endpoint
+GRANITE_URL=$(oc get route granite-service -o jsonpath='{.spec.host}')
+curl https://$GRANITE_URL/health
+```
+
+See [granite-service/README.md](granite-service/README.md) for detailed information.
+
+
 ## Deployment Steps
 
 ### 1. Deploy RAG-List-Collections

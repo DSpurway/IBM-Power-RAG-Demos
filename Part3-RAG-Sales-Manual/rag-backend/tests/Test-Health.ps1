@@ -8,7 +8,7 @@
     
 .PARAMETER RagBackendUrl
     The external OCP route URL for the RAG backend service
-    Example: https://rag-backend-opensearch-llm-on-techzone.apps.p1234.cecc.ihost.com
+    Example: https://rag-backend-llm-on-techzone.apps.p1234.cecc.ihost.com
     
 .PARAMETER SkipCertificateCheck
     Skip SSL certificate validation (useful for self-signed certificates)
@@ -17,10 +17,10 @@
     Enable verbose output showing full responses
     
 .EXAMPLE
-    .\Test-Health.ps1 -RagBackendUrl "https://rag-backend-opensearch-namespace.apps.domain.com"
+    .\Test-Health.ps1 -RagBackendUrl "https://rag-backend-namespace.apps.domain.com"
     
 .EXAMPLE
-    .\Test-Health.ps1 -RagBackendUrl "https://rag-backend-opensearch-namespace.apps.domain.com" -Verbose
+    .\Test-Health.ps1 -RagBackendUrl "https://rag-backend-namespace.apps.domain.com" -Verbose
 #>
 
 [CmdletBinding()]

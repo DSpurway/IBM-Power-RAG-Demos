@@ -25,6 +25,8 @@ class QueryType(Enum):
     """Types of queries that can be handled"""
     TABLE_LOOKUP = "table_lookup"
     METADATA_LOOKUP = "metadata_lookup"
+    ACTIVATION_LOOKUP = "activation_lookup"
+    PHYSICAL_FEATURE_LOOKUP = "physical_feature_lookup"
     RAG = "rag"
 
 
@@ -43,6 +45,17 @@ class QueryClassifier:
         r"stop\s+support(?:ing)?",  # Added: "stop supporting"
         r"end(?:ed)?\s+support",     # Added: "end support", "ended support"
         r"no\s+longer\s+support",    # Added: "no longer support"
+    ]
+    
+    # Patterns for activation feature queries
+    ACTIVATION_PATTERNS = [
+        r"(?:still\s+)?(?:sell|available|order)\s+.*activation",
+        r"activation.*(?:still\s+)?(?:available|sold)",
+        r"(?:processor|memory|cpu|core)\s+activation",
+        r"can\s+(?:i|we)\s+(?:still\s+)?(?:buy|order|get)\s+.*activation",
+        r"what\s+activation.*(?:available|offered)",
+        r"list.*activation",
+        r"show.*activation",
     ]
     
     # Patterns for feature availability queries
@@ -72,6 +85,7 @@ class QueryClassifier:
             use_watson: Whether to use Watson Assistant if available
         """
         self.lifecycle_regex = [re.compile(p, re.IGNORECASE) for p in self.LIFECYCLE_PATTERNS]
+        self.activation_regex = [re.compile(p, re.IGNORECASE) for p in self.ACTIVATION_PATTERNS]
         self.feature_regex = [re.compile(p, re.IGNORECASE) for p in self.FEATURE_PATTERNS]
         self.server_regex = [re.compile(p, re.IGNORECASE) for p in self.SERVER_PATTERNS]
         
@@ -128,6 +142,11 @@ class QueryClassifier:
             logger.info(f"Regex classified as TABLE_LOOKUP: {query[:50]}...")
             return QueryType.TABLE_LOOKUP
         
+        # Check for activation queries
+        if self._is_activation_query(query):
+            logger.info(f"Regex classified as ACTIVATION_LOOKUP: {query[:50]}...")
+            return QueryType.ACTIVATION_LOOKUP
+        
         # Check for feature availability queries
         if self._is_feature_query(query):
             logger.info(f"Regex classified as METADATA_LOOKUP: {query[:50]}...")
@@ -144,6 +163,10 @@ class QueryClassifier:
         has_server = any(regex.search(query) for regex in self.server_regex)
         
         return has_lifecycle and has_server
+    
+    def _is_activation_query(self, query: str) -> bool:
+        """Check if query is about activation features"""
+        return any(regex.search(query) for regex in self.activation_regex)
     
     def _is_feature_query(self, query: str) -> bool:
         """Check if query is about feature availability"""

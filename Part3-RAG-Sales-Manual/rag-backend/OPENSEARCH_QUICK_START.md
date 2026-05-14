@@ -40,18 +40,18 @@ cd ..\RAG-with-Notebook\rag-backend
 
 ```bash
 # 1. Build the image
-oc new-build --name=rag-backend-opensearch \
+oc new-build --name=rag-backend \
   --binary \
   --strategy=docker \
   --dockerfile=Dockerfile.opensearch
 
-oc start-build rag-backend-opensearch --from-dir=. --follow
+oc start-build rag-backend --from-dir=. --follow
 
 # 2. Deploy the application
-oc new-app rag-backend-opensearch
+oc new-app rag-backend
 
 # 3. Set environment variables
-oc set env deployment/rag-backend-opensearch \
+oc set env deployment/rag-backend \
   OPENSEARCH_HOST=opensearch-service \
   OPENSEARCH_PORT=9200 \
   OPENSEARCH_USERNAME=admin \
@@ -60,7 +60,7 @@ oc set env deployment/rag-backend-opensearch \
   LLAMA_PORT=8080
 
 # 4. Expose the service
-oc expose svc/rag-backend-opensearch
+oc expose svc/rag-backend
 ```
 
 ## Configuration
@@ -84,7 +84,7 @@ oc expose svc/rag-backend-opensearch
 ### Update Configuration
 
 ```bash
-oc set env deployment/rag-backend-opensearch \
+oc set env deployment/rag-backend \
   OPENSEARCH_HOST=my-opensearch-cluster \
   OPENSEARCH_PASSWORD=my-secure-password
 ```
@@ -94,7 +94,7 @@ oc set env deployment/rag-backend-opensearch \
 ### 1. Health Check
 
 ```bash
-BACKEND_URL=$(oc get route rag-backend-opensearch -o jsonpath='{.spec.host}')
+BACKEND_URL=$(oc get route rag-backend -o jsonpath='{.spec.host}')
 curl https://$BACKEND_URL/health
 ```
 
@@ -202,23 +202,23 @@ oc run -it --rm debug --image=curlimages/curl --restart=Never -- \
 
 ```bash
 # Check pod status
-oc get pods -l app=rag-backend-opensearch
+oc get pods -l app=rag-backend
 
 # View logs
-oc logs -f deployment/rag-backend-opensearch
+oc logs -f deployment/rag-backend
 
 # Describe pod for events
-oc describe pod -l app=rag-backend-opensearch
+oc describe pod -l app=rag-backend
 ```
 
 ### Build Issues
 
 ```bash
 # Check build logs
-oc logs -f bc/rag-backend-opensearch
+oc logs -f bc/rag-backend
 
 # Rebuild
-oc start-build rag-backend-opensearch --from-dir=. --follow
+oc start-build rag-backend --from-dir=. --follow
 ```
 
 ## Monitoring
@@ -226,7 +226,7 @@ oc start-build rag-backend-opensearch --from-dir=. --follow
 ### Check Resource Usage
 
 ```bash
-oc adm top pods -l app=rag-backend-opensearch
+oc adm top pods -l app=rag-backend
 ```
 
 ### View Metrics
@@ -242,14 +242,14 @@ oc get --raw /apis/metrics.k8s.io/v1beta1/namespaces/$(oc project -q)/pods
 
 ```bash
 # Scale to 3 replicas
-oc scale deployment/rag-backend-opensearch --replicas=3
+oc scale deployment/rag-backend --replicas=3
 ```
 
 ### Vertical Scaling
 
 ```bash
 # Update resource limits
-oc set resources deployment/rag-backend-opensearch \
+oc set resources deployment/rag-backend \
   --requests=cpu=1,memory=4Gi \
   --limits=cpu=2,memory=8Gi
 ```
@@ -287,9 +287,9 @@ Only internal implementation changed - your frontend code needs no modifications
 ## Support
 
 For issues:
-1. Check logs: `oc logs -f deployment/rag-backend-opensearch`
+1. Check logs: `oc logs -f deployment/rag-backend`
 2. Verify OpenSearch: Test connection and cluster health
-3. Review environment variables: `oc set env deployment/rag-backend-opensearch --list`
+3. Review environment variables: `oc set env deployment/rag-backend --list`
 4. Check the main migration guide: `OPENSEARCH_MIGRATION.md`
 
 ## Next Steps

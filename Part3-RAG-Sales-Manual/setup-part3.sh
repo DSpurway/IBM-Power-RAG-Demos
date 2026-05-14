@@ -2,6 +2,7 @@
 
 # Setup script for Part 3 - RAG with Sales Manuals
 # This script helps configure environment variables for all services
+# and deploys the Granite service for complex queries
 
 set -e
 
@@ -86,9 +87,42 @@ else
 fi
 echo ""
 
+# Check if Granite service is deployed
+echo "Checking for Granite service..."
+if oc get deployment granite-service &>/dev/null; then
+    echo "  Granite service is already deployed"
+else
+    echo "  Granite service not found. This is required for complex queries."
+    read -p "Do you want to deploy the Granite service now? (y/n): " DEPLOY_GRANITE
+    if [[ "$DEPLOY_GRANITE" =~ ^[Yy]$ ]]; then
+        echo ""
+        echo "Deploying Granite service..."
+        if [ -d "granite-service" ]; then
+            cd granite-service
+            ./deploy.sh
+            cd ..
+        else
+            echo "  Error: granite-service directory not found."
+            echo "  Please deploy manually from Part3-RAG-Sales-Manual/granite-service/"
+        fi
+    else
+        echo "  Skipping Granite service deployment."
+        echo "  Note: Complex queries will not work without the Granite service."
+    fi
+fi
+echo ""
+
 echo "=========================================="
 echo "Configuration Complete!"
 echo "=========================================="
+echo ""
+echo "Services deployed:"
+echo "  - TinyLlama service (Part 1 & 2 - simple queries)"
+if oc get deployment granite-service &>/dev/null; then
+    echo "  - Granite service (Part 3 - complex queries) ✓"
+else
+    echo "  - Granite service (Part 3 - complex queries) ✗ NOT DEPLOYED"
+fi
 echo ""
 echo "Next steps:"
 echo "1. Wait for all pods to restart (this may take a minute)"
@@ -96,10 +130,11 @@ echo "2. Access the webpage at: $WEBPAGE_URL"
 echo "3. Test the 'List Collections' button to verify CORS is working"
 echo ""
 echo "To check pod status:"
-echo "  oc get pods -l app=sales-manual-rag-app"
+echo "  oc get pods"
 echo ""
 echo "To view logs for a specific service:"
-echo "  oc logs -f deployment/rag-list-collections"
+echo "  oc logs -f deployment/rag-backend"
+echo "  oc logs -f deployment/granite-service"
 echo ""
 
 # Made with Bob

@@ -18,11 +18,15 @@ PROJECT=$(oc project -q)
 echo "Deploying to project: $PROJECT"
 
 # Configuration
-APP_NAME="rag-backend-opensearch"
+APP_NAME="rag-backend"
 IMAGE_NAME="$APP_NAME:latest"
 
 echo ""
-echo "Step 1: Creating BuildConfig..."
+echo "Step 1: Ensuring clean BuildConfig..."
+# Delete existing BuildConfig to avoid git/binary conflicts
+oc delete buildconfig $APP_NAME --ignore-not-found=true
+
+echo "Creating BuildConfig..."
 cat <<EOF | oc apply -f -
 apiVersion: build.openshift.io/v1
 kind: BuildConfig

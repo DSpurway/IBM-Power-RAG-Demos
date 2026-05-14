@@ -56,9 +56,9 @@ This test plan provides comprehensive testing procedures for the consolidated RA
 ## Test Environment
 
 ### Required Services
-1. **RAG Backend** (rag-backend-opensearch)
+1. **RAG Backend** (rag-backend)
    - Port: 8080
-   - Route: `https://rag-backend-opensearch-<namespace>.<domain>`
+   - Route: `https://rag-backend-<namespace>.<domain>`
    
 2. **OpenSearch Service** (opensearch-service)
    - Internal port: 9200
@@ -88,7 +88,7 @@ CORS_ORIGIN=*
 
 ### 1. Access Requirements
 - [ ] OCP cluster access with appropriate permissions
-- [ ] Route URL for rag-backend-opensearch service
+- [ ] Route URL for rag-backend service
 - [ ] Network connectivity to OCP cluster
 - [ ] `curl` or similar HTTP client installed
 
@@ -376,7 +376,7 @@ CORS_ORIGIN=*
    - Verify data is searchable
 
 2. **T6.2 - Restart RAG Backend Pod**
-   - Delete pod: `oc delete pod -l app=rag-backend-opensearch`
+   - Delete pod: `oc delete pod -l app=rag-backend`
    - Wait for new pod to start
    - Verify health check passes
 
@@ -606,12 +606,12 @@ All test scripts are provided in the `tests/` directory:
 ### Configuration
 Set environment variable before running:
 ```bash
-export RAG_BACKEND_URL="https://rag-backend-opensearch-<namespace>.<domain>"
+export RAG_BACKEND_URL="https://rag-backend-<namespace>.<domain>"
 ```
 
 Or pass as parameter:
 ```bash
-./test-health.sh https://rag-backend-opensearch-<namespace>.<domain>
+./test-health.sh https://rag-backend-<namespace>.<domain>
 ```
 
 ---

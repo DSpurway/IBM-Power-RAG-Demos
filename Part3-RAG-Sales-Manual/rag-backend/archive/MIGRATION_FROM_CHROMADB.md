@@ -22,7 +22,7 @@ cd ../RAG-with-Notebook/rag-backend
 oc project your-project-name
 
 # Deploy with a different name to avoid conflicts
-APP_NAME="rag-backend-opensearch"
+APP_NAME="rag-backend"
 
 # Run the deployment script
 ./deploy-opensearch.sh
@@ -31,11 +31,11 @@ APP_NAME="rag-backend-opensearch"
 ```
 
 **What happens:**
-1. Creates new BuildConfig: `rag-backend-opensearch`
+1. Creates new BuildConfig: `rag-backend`
 2. Builds new container (no dependency issues!)
-3. Creates new Deployment: `rag-backend-opensearch`
-4. Creates new Service: `rag-backend-opensearch`
-5. Creates new Route: `rag-backend-opensearch`
+3. Creates new Deployment: `rag-backend`
+4. Creates new Service: `rag-backend`
+5. Creates new Route: `rag-backend`
 6. **Old ChromaDB backend keeps running**
 
 ### Option B: Replace Existing Deployment
@@ -101,17 +101,17 @@ cd ../RAG-with-Notebook/rag-backend
 ./deploy-opensearch.sh
 
 # Watch the build
-oc logs -f bc/rag-backend-opensearch
+oc logs -f bc/rag-backend
 
 # Watch the deployment
-oc get pods -w -l app=rag-backend-opensearch
+oc get pods -w -l app=rag-backend
 ```
 
 ### Step 4: Verify New Backend
 
 ```bash
 # Get the new route
-NEW_URL=$(oc get route rag-backend-opensearch -o jsonpath='{.spec.host}')
+NEW_URL=$(oc get route rag-backend -o jsonpath='{.spec.host}')
 echo "New backend: https://$NEW_URL"
 
 # Test health
@@ -161,7 +161,7 @@ Update your frontend or API clients to use the new backend URL:
 const BACKEND_URL = "https://rag-backend-your-project.apps.cluster.com"
 
 // New
-const BACKEND_URL = "https://rag-backend-opensearch-your-project.apps.cluster.com"
+const BACKEND_URL = "https://rag-backend-your-project.apps.cluster.com"
 ```
 
 **Option B: Switch the route** (if using same name)
@@ -170,7 +170,7 @@ const BACKEND_URL = "https://rag-backend-opensearch-your-project.apps.cluster.co
 oc delete route rag-backend
 
 # Rename new route
-oc patch route rag-backend-opensearch -p '{"metadata":{"name":"rag-backend"}}'
+oc patch route rag-backend -p '{"metadata":{"name":"rag-backend"}}'
 ```
 
 ### Step 7: Decommission Old Backend
@@ -198,10 +198,10 @@ oc delete pvc chroma-db-pvc  # or whatever it was called
 
 ```bash
 # Delete old build config
-oc delete bc rag-backend-opensearch
+oc delete bc rag-backend
 
 # Or update it
-oc patch bc rag-backend-opensearch --type=merge -p '
+oc patch bc rag-backend --type=merge -p '
 {
   "spec": {
     "strategy": {
@@ -217,11 +217,11 @@ oc patch bc rag-backend-opensearch --type=merge -p '
 
 ```bash
 # Update the deployment to use new image
-oc set image deployment/rag-backend-opensearch \
-  rag-backend=image-registry.openshift-image-registry.svc:5000/$(oc project -q)/rag-backend-opensearch:latest
+oc set image deployment/rag-backend \
+  rag-backend=image-registry.openshift-image-registry.svc:5000/$(oc project -q)/rag-backend:latest
 
 # Update environment variables
-oc set env deployment/rag-backend-opensearch \
+oc set env deployment/rag-backend \
   OPENSEARCH_HOST=opensearch-service \
   OPENSEARCH_PORT=9200
 ```
@@ -230,8 +230,8 @@ oc set env deployment/rag-backend-opensearch \
 
 ```bash
 # Delete and recreate
-oc delete svc rag-backend-opensearch
-oc delete route rag-backend-opensearch
+oc delete svc rag-backend
+oc delete route rag-backend
 
 # Then run the deployment script again
 ```
@@ -261,7 +261,7 @@ oc get svc
 
 ```bash
 # Check build logs
-oc logs -f bc/rag-backend-opensearch
+oc logs -f bc/rag-backend
 
 # Common issues:
 # - Wrong Dockerfile path: Check dockerfilePath in BuildConfig
@@ -273,10 +273,10 @@ oc logs -f bc/rag-backend-opensearch
 
 ```bash
 # Check pod status
-oc get pods -l app=rag-backend-opensearch
+oc get pods -l app=rag-backend
 
 # Check events
-oc describe pod -l app=rag-backend-opensearch
+oc describe pod -l app=rag-backend
 
 # Common issues:
 # - OpenSearch not accessible: Check OPENSEARCH_HOST
@@ -293,7 +293,7 @@ If something goes wrong:
 oc scale deployment/rag-backend --replicas=1
 
 # Scale down new backend
-oc scale deployment/rag-backend-opensearch --replicas=0
+oc scale deployment/rag-backend --replicas=0
 
 # Switch route back (if you changed it)
 oc patch route rag-backend -p '{"spec":{"to":{"name":"rag-backend"}}}'
@@ -313,7 +313,7 @@ rag-backend (ChromaDB)
 
 ### After (OpenSearch)
 ```
-rag-backend-opensearch
+rag-backend
 ├── Build issues: None! ✅
 ├── Build time: 8-12 minutes
 ├── Image size: ~2.0 GB
@@ -379,10 +379,10 @@ Before decommissioning the old backend, verify:
 
 If you encounter issues:
 
-1. Check logs: `oc logs -f deployment/rag-backend-opensearch`
+1. Check logs: `oc logs -f deployment/rag-backend`
 2. Check events: `oc get events --sort-by='.lastTimestamp'`
 3. Verify OpenSearch: `oc get svc opensearch-service`
-4. Test connectivity: `oc rsh deployment/rag-backend-opensearch`
+4. Test connectivity: `oc rsh deployment/rag-backend`
 5. Review documentation: `CONTAINER_DEPLOYMENT.md`
 
 ---

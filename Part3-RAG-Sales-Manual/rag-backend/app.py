@@ -30,6 +30,8 @@ from docling_config import (
 from query_classifier import QueryClassifier, QueryType
 from table_lookup_service import TableLookupService
 from reranker_service import RerankerService
+from activation_feature_service import ActivationFeatureService
+from physical_feature_service import PhysicalFeatureService
 
 app = Flask(__name__)
 
@@ -707,7 +709,18 @@ def search():
         logger.info(f"Searching in collection {collection_name} for: {question}")
         
         # Determine if this is a simple collection (like Harry Potter) or complex (sales manuals)
-        is_sales_manual_collection = 'sales_manual' in collection_name.lower() or collection_name.startswith('ibm_power_')
+        # Check if collection is in the sales manual collections by checking if it's in the MTM mapping
+        is_sales_manual_collection = False
+        
+        # Method 1: Check if it's in the known MTM format (starts with rag_ and is a hash)
+        if collection_name.startswith('rag_') and len(collection_name) > 10:
+            # This is likely a sales manual collection (hashed format)
+            is_sales_manual_collection = True
+            logger.info(f"Detected sales manual collection (hashed format): {collection_name}")
+        # Method 2: Check for explicit sales_manual or ibm_power_ prefix
+        elif 'sales_manual' in collection_name.lower() or collection_name.startswith('ibm_power_'):
+            is_sales_manual_collection = True
+            logger.info(f"Detected sales manual collection (named format): {collection_name}")
         
         # Step 1: Classify the query and extract entities (only for sales manual collections)
         classification = None
@@ -783,6 +796,272 @@ def search():
                 'count': 1,
                 'classification': classification,
                 'table_lookup': True  # Flag to indicate this is a direct table lookup
+            })
+        
+        elif classification['query_type'] == 'activation_lookup':
+            # Activation feature lookup - vector search + structured extraction
+            logger.info("Processing activation feature query")
+            
+            # Use vector search to find activation-related chunks
+            embeddings = get_embeddings()
+            client = get_opensearch_client()
+            index_name = _generate_index_name(collection_name)
+            
+            if not client.indices.exists(index=index_name):
+                return jsonify({'error': f'Collection {collection_name} does not exist'}), 404
+            
+            # Generate query embedding
+            query_vector = embeddings.embed_query(question)
+            
+            # Search for activation-related chunks (get more candidates)
+            search_body = {
+                "size": 20,  # Get more chunks to find all activation features
+                "_source": ["chunk_id", "text", "metadata"],
+                "query": {
+                    "bool": {
+                        "must": [
+                            {
+                                "knn": {
+                                    "embedding": {
+                                        "vector": query_vector,
+                                        "k": 20
+                                    }
+                                }
+                            }
+                        ],
+                        "should": [
+                            {"match": {"text": "activation"}},
+                            {"match": {"text": "activations"}},
+                            {"match": {"text": "memory activation"}},
+                            {"match": {"text": "processor activation"}}
+                        ],
+                        "minimum_should_match": 1
+                    }
+                }
+            }
+            
+            response = client.search(index=index_name, body=search_body)
+            hits = response['hits']['hits']
+            
+            logger.info(f"Found {len(hits)} potential activation chunks")
+            
+            # Extract activation features from chunks
+            activation_service = ActivationFeatureService()
+            chunks = [{'text': hit['_source']['text'], 'metadata': hit['_source'].get('metadata', {})}
+                     for hit in hits]
+            
+            features = activation_service.extract_features_from_chunks(chunks)
+            
+            if not features:
+                # Provide context-aware response based on server type
+                server_model = classification.get('server_model', 'unknown')
+                is_small_system = server_model and (
+                    server_model.startswith('S10') or
+                    server_model.startswith('L10') or
+                    server_model.startswith('S9') and len(server_model) == 4
+                )
+                
+                if is_small_system:
+                    answer = (
+                        f"The IBM Power {server_model} is a scale-out system with fixed processor and memory configurations. "
+                        f"These systems typically do not offer processor or memory activation features. "
+                        f"All processors and memory are included in the base configuration."
+                    )
+                else:
+                    answer = (
+                        f"I couldn't find any activation features in the sales manual for the IBM Power {server_model}. "
+                        f"This could mean this model doesn't support processor/memory activations, or the data needs to be re-ingested."
+                    )
+                
+                return jsonify({
+                    'success': True,
+                    'query_type': 'activation_lookup',
+                    'answer': answer,
+                    'features': [],
+                    'summary': {
+                        'total': 0,
+                        'available': 0,
+                        'discontinued': 0
+                    },
+                    'results': [{
+                        'content': answer,
+                        'metadata': {
+                            'source': 'sales_manual',
+                            'total_features': 0,
+                            'available_features': 0,
+                            'discontinued_features': 0
+                        },
+                        'score': 1.0
+                    }],
+                    'count': 0,
+                    'classification': classification,
+                    'activation_lookup': True,
+                    'chunks_searched': len(hits)
+                })
+            
+            # Format the results
+            summary = activation_service.format_activation_summary(features, question)
+            answer = activation_service.generate_activation_answer(features, question)
+            
+            # Extract source URL from chunk metadata (if available)
+            source_url = None
+            source_filename = None
+            for hit in hits:
+                metadata = hit['_source'].get('metadata', {})
+                if metadata.get('source'):
+                    source_url = metadata['source']
+                    source_filename = metadata.get('filename') or metadata.get('source_filename')
+                    break  # Use first available source
+            
+            # Build metadata with source information
+            result_metadata = {
+                'source': 'sales_manual',
+                'total_features': len(features),
+                'available_features': summary['summary']['available'],
+                'discontinued_features': summary['summary']['discontinued']
+            }
+            
+            if source_url:
+                result_metadata['source_url'] = source_url
+                logger.info(f"Including source URL in activation response: {source_url}")
+            if source_filename:
+                result_metadata['source_filename'] = source_filename
+            
+            return jsonify({
+                'success': True,
+                'query_type': 'activation_lookup',
+                'answer': answer,
+                'features': summary['features'],
+                'categories': summary['categories'],
+                'summary': summary['summary'],
+                'results': [{
+                    'content': answer,
+                    'metadata': result_metadata,
+                    'score': 1.0
+                }],
+                'count': len(features),
+                'classification': classification,
+                'activation_lookup': True
+            })
+        
+        elif classification['query_type'] == 'physical_feature_lookup':
+            # Physical feature lookup (processors, memory - non-activation)
+            logger.info("Processing physical feature query")
+            
+            # Use vector search to find physical feature chunks
+            embeddings = get_embeddings()
+            client = get_opensearch_client()
+            index_name = _generate_index_name(collection_name)
+            
+            if not client.indices.exists(index=index_name):
+                return jsonify({'error': f'Collection {collection_name} does not exist'}), 404
+            
+            # Generate query embedding
+            query_vector = embeddings.embed_query(question)
+            
+            # Search for physical feature chunks (exclude activation keywords)
+            search_body = {
+                "size": 20,
+                "_source": ["chunk_id", "text", "metadata"],
+                "query": {
+                    "bool": {
+                        "must": [
+                            {
+                                "knn": {
+                                    "embedding": {
+                                        "vector": query_vector,
+                                        "k": 20
+                                    }
+                                }
+                            }
+                        ],
+                        "should": [
+                            {"match": {"text": "processor"}},
+                            {"match": {"text": "memory"}},
+                            {"match": {"text": "core"}},
+                            {"match": {"text": "GB"}}
+                        ],
+                        "must_not": [
+                            {"match": {"text": "activation"}},
+                            {"match": {"text": "activations"}}
+                        ],
+                        "minimum_should_match": 1
+                    }
+                }
+            }
+            
+            response = client.search(index=index_name, body=search_body)
+            hits = response['hits']['hits']
+            
+            logger.info(f"Found {len(hits)} potential physical feature chunks")
+            
+            # Extract physical features from chunks
+            physical_service = PhysicalFeatureService()
+            chunks = [{'text': hit['_source']['text'], 'metadata': hit['_source'].get('metadata', {})}
+                     for hit in hits]
+            
+            features = physical_service.extract_features_from_chunks(chunks)
+            
+            if not features:
+                server_model = classification.get('server_model', 'unknown')
+                answer = (
+                    f"I couldn't find any physical processor or memory features in the sales manual for the IBM Power {server_model}. "
+                    f"This could mean the data needs to be re-ingested or the features are documented differently."
+                )
+                
+                return jsonify({
+                    'success': True,
+                    'query_type': 'physical_feature_lookup',
+                    'answer': answer,
+                    'features': [],
+                    'results': [{
+                        'content': answer,
+                        'metadata': {'source': 'sales_manual', 'total_features': 0},
+                        'score': 1.0
+                    }],
+                    'count': 0,
+                    'classification': classification,
+                    'physical_feature_lookup': True
+                })
+            
+            # Generate answer
+            answer = physical_service.generate_physical_feature_answer(features, question)
+            
+            # Extract source URL
+            source_url = None
+            source_filename = None
+            for hit in hits:
+                metadata = hit['_source'].get('metadata', {})
+                if metadata.get('source'):
+                    source_url = metadata['source']
+                    source_filename = metadata.get('filename') or metadata.get('source_filename')
+                    break
+            
+            result_metadata = {
+                'source': 'sales_manual',
+                'total_features': len(features),
+                'available_features': len([f for f in features if f.is_available]),
+                'discontinued_features': len([f for f in features if not f.is_available])
+            }
+            
+            if source_url:
+                result_metadata['source_url'] = source_url
+            if source_filename:
+                result_metadata['source_filename'] = source_filename
+            
+            return jsonify({
+                'success': True,
+                'query_type': 'physical_feature_lookup',
+                'answer': answer,
+                'features': [f.to_dict() for f in features],
+                'results': [{
+                    'content': answer,
+                    'metadata': result_metadata,
+                    'score': 1.0
+                }],
+                'count': len(features),
+                'classification': classification,
+                'physical_feature_lookup': True
             })
         
         elif classification['query_type'] == 'metadata_lookup':
@@ -1270,6 +1549,293 @@ def generate():
                 else:
                     logger.warning(f"Table lookup failed: {result.get('error')}")
                     # Fall through to LLM if table lookup fails
+        
+        # Step 2.5: Handle activation feature queries
+        elif query_type == 'activation_lookup':
+            logger.info("Handling as activation feature query")
+            
+            # Get server model from query intent
+            server_model = query_intent.get('server_model')
+            
+            if not server_model:
+                return jsonify({
+                    'success': False,
+                    'error': 'Could not identify server model in query',
+                    'query_type': 'activation_lookup',
+                    'content': 'I understand you\'re asking about activation features, but I couldn\'t identify which IBM Power server you\'re referring to. Please specify the server model (e.g., E1080, S1024).'
+                }), 400
+            
+            # Determine collection name from server model
+            from server_mtm_mapper import get_mtm_for_model
+            server_mtm = get_mtm_for_model(server_model)
+            
+            if server_mtm:
+                collection_name = f"{OPENSEARCH_DB_PREFIX}_mtm_{server_mtm.lower().replace('-', '_')}"
+            else:
+                collection_name = f"{OPENSEARCH_DB_PREFIX}_power_{server_model.lower()}"
+            
+            logger.info(f"Looking for activation features in collection: {collection_name}")
+            
+            # Use vector search to find activation-related chunks
+            embeddings = get_embeddings()
+            client = get_opensearch_client()
+            index_name = _generate_index_name(collection_name)
+            
+            if not client.indices.exists(index=index_name):
+                return jsonify({
+                    'success': False,
+                    'error': f'No sales manual data found for {server_model}',
+                    'query_type': 'activation_lookup',
+                    'content': f'I don\'t have sales manual data for the IBM Power {server_model} yet. Please ensure the sales manual has been ingested.'
+                }), 404
+            
+            # Generate query embedding
+            query_vector = embeddings.embed_query(prompt)
+            
+            # Search for activation-related chunks
+            search_body = {
+                "size": 20,
+                "_source": ["chunk_id", "text", "metadata"],
+                "query": {
+                    "bool": {
+                        "must": [
+                            {
+                                "knn": {
+                                    "embedding": {
+                                        "vector": query_vector,
+                                        "k": 20
+                                    }
+                                }
+                            }
+                        ],
+                        "should": [
+                            {"match": {"text": "activation"}},
+                            {"match": {"text": "activations"}},
+                            {"match": {"text": "memory activation"}},
+                            {"match": {"text": "processor activation"}}
+                        ],
+                        "minimum_should_match": 1
+                    }
+                }
+            }
+            
+            response = client.search(index=index_name, body=search_body)
+            hits = response['hits']['hits']
+            
+            logger.info(f"Found {len(hits)} potential activation chunks")
+            
+            # Extract activation features from chunks
+            activation_service = ActivationFeatureService()
+            chunks = [{'text': hit['_source']['text'], 'metadata': hit['_source'].get('metadata', {})}
+                     for hit in hits]
+            
+            features = activation_service.extract_features_from_chunks(chunks)
+            
+            if not features:
+                # Provide context-aware response based on server type
+                # Smaller systems (S/L series without E prefix) typically don't have activations
+                is_small_system = server_model and (
+                    server_model.startswith('S10') or
+                    server_model.startswith('L10') or
+                    server_model.startswith('S9') and len(server_model) == 4  # S922, S924, etc.
+                )
+                
+                if is_small_system:
+                    content = (
+                        f"The IBM Power {server_model} is a scale-out system with fixed processor and memory configurations. "
+                        f"These systems typically do not offer processor or memory activation features. "
+                        f"All processors and memory are included in the base configuration."
+                    )
+                else:
+                    content = (
+                        f"I couldn't find any activation features in the sales manual for the IBM Power {server_model}. "
+                        f"This could mean:\n"
+                        f"• This model doesn't support processor/memory activations\n"
+                        f"• The sales manual data needs to be re-ingested\n"
+                        f"• The activation features are documented in a different section"
+                    )
+                
+                return jsonify({
+                    'success': True,  # Changed to True since this is valid information
+                    'query_type': 'activation_lookup',
+                    'content': content,
+                    'server_model': server_model,
+                    'features': [],
+                    'summary': {
+                        'total': 0,
+                        'available': 0,
+                        'discontinued': 0
+                    },
+                    'chunks_searched': len(hits),
+                    'ai_services_used': ['watsonx_assistant', 'opensearch', 'activation_extractor'],
+                    'processing_method': 'activation_feature_extraction'
+                })
+            
+            # Generate natural language answer
+            answer = activation_service.generate_activation_answer(features, prompt)
+            summary = activation_service.format_activation_summary(features, prompt)
+            
+            # Extract source URL from chunk metadata (if available)
+            source_url = None
+            source_filename = None
+            for hit in hits:
+                metadata = hit['_source'].get('metadata', {})
+                if metadata.get('source'):
+                    source_url = metadata['source']
+                    source_filename = metadata.get('filename') or metadata.get('source_filename')
+                    break  # Use first available source
+            
+            # Build response with source information
+            response_data = {
+                'success': True,
+                'content': answer,
+                'query_type': 'activation_lookup',
+                'server_model': server_model,
+                'features': summary['features'],
+                'categories': summary['categories'],
+                'summary': summary['summary'],
+                'chunks_found': len(hits),
+                'ai_services_used': ['watsonx_assistant', 'opensearch', 'activation_extractor'],
+                'processing_method': 'activation_feature_extraction'
+            }
+            
+            # Add source information if available
+            if source_url:
+                response_data['source_url'] = source_url
+                logger.info(f"Including source URL in activation response: {source_url}")
+            if source_filename:
+                response_data['source_filename'] = source_filename
+            
+            return jsonify(response_data)
+        
+        # Step 2.6: Handle physical feature queries (processors, memory - non-activation)
+        elif query_type == 'physical_feature_lookup':
+            logger.info("Handling as physical feature query")
+            
+            # Get server model from query intent
+            server_model = query_intent.get('server_model')
+            
+            if not server_model:
+                return jsonify({
+                    'success': False,
+                    'error': 'Could not identify server model in query',
+                    'query_type': 'physical_feature_lookup',
+                    'content': 'I understand you\'re asking about physical features, but I couldn\'t identify which IBM Power server you\'re referring to. Please specify the server model.'
+                }), 400
+            
+            # Determine collection name
+            from server_mtm_mapper import get_mtm_for_model
+            server_mtm = get_mtm_for_model(server_model)
+            
+            if server_mtm:
+                collection_name = f"{OPENSEARCH_DB_PREFIX}_mtm_{server_mtm.lower().replace('-', '_')}"
+            else:
+                collection_name = f"{OPENSEARCH_DB_PREFIX}_power_{server_model.lower()}"
+            
+            logger.info(f"Looking for physical features in collection: {collection_name}")
+            
+            # Use vector search
+            embeddings = get_embeddings()
+            client = get_opensearch_client()
+            index_name = _generate_index_name(collection_name)
+            
+            if not client.indices.exists(index=index_name):
+                return jsonify({
+                    'success': False,
+                    'error': f'No sales manual data found for {server_model}',
+                    'query_type': 'physical_feature_lookup',
+                    'content': f'I don\'t have sales manual data for the IBM Power {server_model} yet.'
+                }), 404
+            
+            # Generate query embedding
+            query_vector = embeddings.embed_query(prompt)
+            
+            # Search for physical feature chunks (exclude activation keywords)
+            search_body = {
+                "size": 20,
+                "_source": ["chunk_id", "text", "metadata"],
+                "query": {
+                    "bool": {
+                        "must": [
+                            {
+                                "knn": {
+                                    "embedding": {
+                                        "vector": query_vector,
+                                        "k": 20
+                                    }
+                                }
+                            }
+                        ],
+                        "should": [
+                            {"match": {"text": "processor"}},
+                            {"match": {"text": "memory"}},
+                            {"match": {"text": "core"}},
+                            {"match": {"text": "GB"}}
+                        ],
+                        "must_not": [
+                            {"match": {"text": "activation"}},
+                            {"match": {"text": "activations"}}
+                        ],
+                        "minimum_should_match": 1
+                    }
+                }
+            }
+            
+            response = client.search(index=index_name, body=search_body)
+            hits = response['hits']['hits']
+            
+            logger.info(f"Found {len(hits)} potential physical feature chunks")
+            
+            # Extract physical features
+            physical_service = PhysicalFeatureService()
+            chunks = [{'text': hit['_source']['text'], 'metadata': hit['_source'].get('metadata', {})}
+                     for hit in hits]
+            
+            features = physical_service.extract_features_from_chunks(chunks)
+            
+            if not features:
+                return jsonify({
+                    'success': True,
+                    'content': f'I couldn\'t find any physical processor or memory features in the sales manual for the IBM Power {server_model}.',
+                    'query_type': 'physical_feature_lookup',
+                    'server_model': server_model,
+                    'features': [],
+                    'chunks_found': len(hits),
+                    'ai_services_used': ['watsonx_assistant', 'opensearch', 'physical_feature_extractor'],
+                    'processing_method': 'physical_feature_extraction'
+                })
+            
+            # Generate answer
+            answer = physical_service.generate_physical_feature_answer(features, prompt)
+            
+            # Extract source URL
+            source_url = None
+            source_filename = None
+            for hit in hits:
+                metadata = hit['_source'].get('metadata', {})
+                if metadata.get('source'):
+                    source_url = metadata['source']
+                    source_filename = metadata.get('filename') or metadata.get('source_filename')
+                    break
+            
+            response_data = {
+                'success': True,
+                'content': answer,
+                'query_type': 'physical_feature_lookup',
+                'server_model': server_model,
+                'features': [f.to_dict() for f in features],
+                'chunks_found': len(hits),
+                'ai_services_used': ['watsonx_assistant', 'opensearch', 'physical_feature_extractor'],
+                'processing_method': 'physical_feature_extraction'
+            }
+            
+            if source_url:
+                response_data['source_url'] = source_url
+                logger.info(f"Including source URL in physical feature response: {source_url}")
+            if source_filename:
+                response_data['source_filename'] = source_filename
+            
+            return jsonify(response_data)
         
         # Step 3: For non-table queries or failed lookups, use LLM
         logger.info(f"Using LLM for query (type: {query_type})")
