@@ -72,13 +72,13 @@ class ActivationFeatureService:
         'cod',
     ]
     
-    def __init__(self, use_llm_descriptions: bool = True, max_llm_calls: int = 3):
+    def __init__(self, use_llm_descriptions: bool = True, max_llm_calls: int = 1):
         """
         Initialize the activation feature service
         
         Args:
             use_llm_descriptions: Whether to use LLM to generate cleaner descriptions
-            max_llm_calls: Maximum number of LLM calls to make (to prevent timeouts, default: 3)
+            max_llm_calls: Maximum number of LLM calls to make (default: 1 for line-by-line behavior)
         """
         self.use_llm_descriptions = use_llm_descriptions
         self.max_llm_calls = max_llm_calls
@@ -107,17 +107,18 @@ class ActivationFeatureService:
         try:
             # Create a focused prompt for Granite LLM
             # Pass the FULL chunk for better context understanding
-            prompt = f"""Based on the following IBM Power Systems sales manual text about feature code #{feature_code}, provide a single clear sentence describing what this activation feature is for.
+            prompt = f"""Based on the following IBM Power Systems sales manual text about feature code #{feature_code}, provide exactly one short sentence describing what this activation feature is for.
 
 Sales Manual Text:
 {raw_text}
 
-Provide ONLY a concise description (one sentence, maximum 100 words) that explains:
-1. What type of activation it is (processor/memory)
-2. The capacity or amount
-3. Any important restrictions (e.g., "not orderable in China", "Linux only", "Pools 2.0")
-
-Do not include the feature code in your description. Be specific and factual.
+Requirements:
+- Return exactly one sentence
+- Maximum 30 words
+- State the activation type and capacity/amount
+- Include only the most important restriction if present
+- Do not include the feature code
+- Do not add explanations, headings, or extra text
 
 Description:"""
 
@@ -131,11 +132,11 @@ Description:"""
                 self.llm_url,
                 json={
                     "prompt": prompt,
-                    "max_tokens": 120,  # Limit to ensure concise response
-                    "temperature": 0.2,  # Lower temperature for more focused output
-                    "stop": ["\n\n", "Feature Code:", "Sales Manual", "\n"]  # Stop at line break
+                    "max_tokens": 40,
+                    "temperature": 0.1,
+                    "stop": ["\n", "\n\n", "Feature Code:", "Sales Manual", "Description:"]
                 },
-                timeout=30  # Increased timeout to see if Granite can complete
+                timeout=30
             )
             
             elapsed_time = time.time() - start_time
@@ -526,13 +527,13 @@ Description:"""
 
 
 # Convenience function
-def extract_activation_features(chunks: List[Dict], max_llm_calls: int = 10) -> List[ActivationFeature]:
+def extract_activation_features(chunks: List[Dict], max_llm_calls: int = 1) -> List[ActivationFeature]:
     """
     Quick extraction without creating service instance
     
     Args:
         chunks: List of chunk dictionaries
-        max_llm_calls: Maximum number of LLM calls to prevent timeouts (default: 10)
+        max_llm_calls: Maximum number of LLM calls to prevent timeouts (default: 1)
     """
     service = ActivationFeatureService(max_llm_calls=max_llm_calls)
     return service.extract_features_from_chunks(chunks)

@@ -58,35 +58,34 @@ class WatsonAssistantService:
     
     def _get_session(self) -> Optional[str]:
         """
-        Get or create a Watson Assistant session
-        Sessions expire after 5 minutes of inactivity
+        Create a fresh Watson Assistant session for each query.
+        Sessions are intentionally not reused to avoid stale session 404s.
         """
         if not self.is_enabled() or not self.assistant_id:
             return None
         
-        # Create new session if needed
-        if not self.session_id:
-            try:
-                session_url = f"{self.url}/v2/assistants/{self.assistant_id}/sessions"
-                response = requests.post(
-                    session_url,
-                    params={'version': self.version},
-                    auth=('apikey', self.api_key),
-                    timeout=10
-                )
-                response.raise_for_status()
-                
-                data = response.json()
-                self.session_id = data.get('session_id')
-                self.session_created_at = datetime.utcnow()
-                
-                logger.info(f"Created Watson Assistant session: {self.session_id}")
-                
-            except Exception as e:
-                logger.error(f"Failed to create Watson Assistant session: {e}")
-                return None
-        
-        return self.session_id
+        try:
+            session_url = f"{self.url}/v2/assistants/{self.assistant_id}/sessions"
+            response = requests.post(
+                session_url,
+                params={'version': self.version},
+                auth=('apikey', self.api_key),
+                timeout=10
+            )
+            response.raise_for_status()
+            
+            data = response.json()
+            self.session_id = data.get('session_id')
+            self.session_created_at = datetime.utcnow()
+            
+            logger.info(f"Created Watson Assistant session: {self.session_id}")
+            return self.session_id
+            
+        except Exception as e:
+            logger.error(f"Failed to create Watson Assistant session: {e}")
+            self.session_id = None
+            self.session_created_at = None
+            return None
     
     def analyze_query(self, query: str) -> Dict[str, Any]:
         """
@@ -169,6 +168,8 @@ class WatsonAssistantService:
                 'intents': [],
                 'entities': []
             }
+        finally:
+            self.close_session()
     
     def extract_lifecycle_intent(self, analysis: Dict[str, Any]) -> Optional[str]:
         """
