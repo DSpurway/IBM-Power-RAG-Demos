@@ -135,18 +135,25 @@ Mr. Dursley was the director of a firm called Grunnings, which made drills. He w
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let accumulatedText = '';
+      let buffer = ''; // Buffer for incomplete lines
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
         const chunk = decoder.decode(value, { stream: true });
-        const lines = chunk.split('\n');
+        buffer += chunk;
+        
+        // Split by newlines, but keep the last incomplete line in buffer
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || ''; // Keep last incomplete line
 
         for (const line of lines) {
-          if (line.startsWith('data: ')) {
+          if (line.trim().startsWith('data: ')) {
             try {
-              const jsonStr = line.slice(6); // Remove 'data: ' prefix
+              const jsonStr = line.trim().slice(6); // Remove 'data: ' prefix
+              if (!jsonStr) continue; // Skip empty data lines
+              
               const data = JSON.parse(jsonStr);
               
               if (data.error) {
@@ -158,7 +165,10 @@ Mr. Dursley was the director of a firm called Grunnings, which made drills. He w
                 setPart1Answer(accumulatedText);
               }
             } catch (parseError) {
-              console.warn('Failed to parse SSE data:', line, parseError);
+              // Only log if it's not an empty line
+              if (jsonStr && jsonStr.trim()) {
+                console.warn('Failed to parse SSE data:', line.trim(), parseError);
+              }
             }
           }
         }
