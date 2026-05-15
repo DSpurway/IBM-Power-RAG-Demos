@@ -94,35 +94,33 @@ export default function LandingPage() {
       </Grid>
 
       {/* Principles Section - Separate Grid */}
-      <Grid fullWidth>
-        <Column lg={16} md={8} sm={4} className="landing-page__r3">
-          <Column lg={4} md={2} sm={4}>
-            <h3 className="landing-page__label">The Principles</h3>
-          </Column>
-          <Column
-            lg={{ start: 5, span: 3 }}
-            md={{ start: 3, span: 6 }}
-            sm={4}
-            className="landing-page__title landing-page__title--centered">
-            <h4 className="landing-page__principle-heading">💾 Data Locality</h4>
-            <div className="landing-page__principle-text">Run GenAI Models where your data lives</div>
-          </Column>
-          <Column
-            lg={{ start: 9, span: 3 }}
-            md={{ start: 3, span: 6 }}
-            sm={4}
-            className="landing-page__title landing-page__title--centered">
-            <h4 className="landing-page__principle-heading">🔒 Security</h4>
-            <div className="landing-page__principle-text">Ensure data sovereignty</div>
-          </Column>
-          <Column
-            lg={{ start: 13, span: 3 }}
-            md={{ start: 3, span: 6 }}
-            sm={4}
-            className="landing-page__title landing-page__title--centered">
-            <h4 className="landing-page__principle-heading">⚡ Reliability</h4>
-            <div className="landing-page__principle-text">Legendary reliability</div>
-          </Column>
+      <Grid fullWidth className="landing-page__r3">
+        <Column lg={4} md={2} sm={4}>
+          <h3 className="landing-page__label">The Principles</h3>
+        </Column>
+        <Column
+          lg={{ start: 5, span: 3 }}
+          md={{ start: 3, span: 6 }}
+          sm={4}
+          className="landing-page__title landing-page__title--centered">
+          <h4 className="landing-page__principle-heading">💾 Data Locality</h4>
+          <div className="landing-page__principle-text">Run GenAI Models where your data lives</div>
+        </Column>
+        <Column
+          lg={{ start: 9, span: 3 }}
+          md={{ start: 3, span: 6 }}
+          sm={4}
+          className="landing-page__title landing-page__title--centered">
+          <h4 className="landing-page__principle-heading">🔒 Security</h4>
+          <div className="landing-page__principle-text">Ensure data sovereignty</div>
+        </Column>
+        <Column
+          lg={{ start: 13, span: 3 }}
+          md={{ start: 3, span: 6 }}
+          sm={4}
+          className="landing-page__title landing-page__title--centered">
+          <h4 className="landing-page__principle-heading">⚡ Reliability</h4>
+          <div className="landing-page__principle-text">Legendary reliability</div>
         </Column>
       </Grid>
     </>
