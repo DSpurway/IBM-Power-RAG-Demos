@@ -528,7 +528,7 @@ Mr. Dursley was the director of a firm called Grunnings, which made drills. He w
                     <Button
                       onClick={handlePart1Submit}
                       disabled={part1Loading || !part1Question.trim()}
-                      style={{ marginBottom: '2rem' }}
+                      className="button-spacing"
                     >
                       {part1Loading ? 'Generating...' : 'Ask Question'}
                     </Button>
@@ -536,28 +536,21 @@ Mr. Dursley was the director of a firm called Grunnings, which made drills. He w
                     {part1Loading && <Loading description="Generating response..." withOverlay={false} />}
 
                     {part1Answer && (
-                      <div style={{ marginTop: '1rem' }}>
-                        <Tile style={{ backgroundColor: '#f4f4f4', padding: '1rem' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', marginBottom: '0.5rem' }}>
-                            <Bot size={20} style={{ marginRight: '0.5rem' }} />
-                            <h4 style={{ margin: 0 }}>AI Response (TinyLlama)</h4>
-                          </div>
-                          <div style={{
-                            padding: '1rem',
-                            backgroundColor: 'white',
-                            borderLeft: '4px solid #0f62fe',
-                            borderRadius: '4px'
-                          }}>
-                            <p style={{ whiteSpace: 'pre-wrap', margin: 0 }}>{part1Answer}</p>
-                          </div>
-                        </Tile>
+                      <div className="ai-response">
+                        <div className="ai-response__header">
+                          <Bot size={20} className="ai-response__icon" />
+                          <h4 className="ai-response__title">AI Response (TinyLlama)</h4>
+                        </div>
+                        <div className="ai-response__content">
+                          {part1Answer}
+                        </div>
                         <InlineNotification
                           kind="warning"
                           lowContrast
                           subtitle="This response is generated without RAG context and may contain inaccuracies or hallucinations."
                           title="No context provided"
                           hideCloseButton
-                          style={{ marginTop: '0.5rem', maxWidth: '100%' }}
+                          className="section-spacing"
                         />
                       </div>
                     )}
@@ -940,30 +933,21 @@ Mr. Dursley was the director of a firm called Grunnings, which made drills. He w
                         The LLM has processed the prompt and generated an answer based on the retrieved context.
                       </p>
                       
-                      <div style={{ marginTop: '20px' }}>
-                        <Tile style={{ backgroundColor: '#f4f4f4', padding: '1rem' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', marginBottom: '0.5rem' }}>
-                            <Bot size={20} style={{ marginRight: '0.5rem' }} />
-                            <h4 style={{ margin: 0 }}>AI Response with RAG (TinyLlama)</h4>
-                          </div>
-                          <div style={{
-                            padding: '1rem',
-                            backgroundColor: 'white',
-                            borderLeft: '4px solid #24a148',
-                            borderRadius: '4px'
-                          }}>
-                            <p style={{ fontSize: '16px', lineHeight: '1.6', margin: 0 }}>
-                              {part2Answer || 'Generating...'}
-                            </p>
-                          </div>
-                        </Tile>
+                      <div className="ai-response ai-response--rag">
+                        <div className="ai-response__header">
+                          <Bot size={20} className="ai-response__icon" />
+                          <h4 className="ai-response__title">AI Response with RAG (TinyLlama)</h4>
+                        </div>
+                        <div className="ai-response__content">
+                          {part2Answer || 'Generating...'}
+                        </div>
                         <InlineNotification
                           kind="success"
                           lowContrast
                           subtitle="This response is generated using RAG with context from the Harry Potter book."
                           title="Context-aware response"
                           hideCloseButton
-                          style={{ marginTop: '0.5rem', maxWidth: '100%' }}
+                          className="section-spacing"
                         />
                       </div>
                       
