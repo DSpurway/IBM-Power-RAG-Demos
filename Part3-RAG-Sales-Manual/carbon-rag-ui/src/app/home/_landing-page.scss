@@ -71,7 +71,21 @@ html {
 }
 
 .landing-page__title {
-  padding-bottom: 0.5rem;
+  padding-bottom: $spacing-03;
+}
+
+.landing-page__title--centered {
+  text-align: center;
+}
+
+.landing-page__principle-heading {
+  @include type-style('heading-03');
+  margin-bottom: $spacing-03;
+}
+
+.landing-page__principle-text {
+  @include type-style('body-short-01');
+  color: $text-secondary;
 }
 
 .landing-page__banner,

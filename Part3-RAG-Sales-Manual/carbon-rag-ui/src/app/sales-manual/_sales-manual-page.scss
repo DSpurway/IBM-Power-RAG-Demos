@@ -1,61 +1,186 @@
-.rag-page {
-  padding: 2rem 0;
-  
-  &__banner {
-    padding-bottom: 2rem;
-  }
-  
-  &__heading {
-    font-weight: 600;
-    margin-top: 1rem;
-  }
-  
-  &__content {
-    margin-top: 2rem;
-  }
+@use '@carbon/react/scss/spacing' as *;
+@use '@carbon/react/scss/type' as *;
+@use '@carbon/react/scss/theme' as *;
+
+.rag-page__banner {
+  padding-top: $spacing-05;
+  padding-bottom: $spacing-07;
+  padding-left: $spacing-06;
+}
+
+.rag-page__heading {
+  @include type-style('productive-heading-05');
+}
+
+.rag-page__content {
+  padding: $spacing-05;
 }
 
 .tile-spacing {
-  margin-bottom: 1rem;
-  padding: 1.5rem;
+  margin-bottom: $spacing-05;
 }
 
-// DataTable customizations
-.cds--data-table {
-  font-size: 0.875rem;
-  
-  td {
-    vertical-align: middle;
-  }
+.section-spacing {
+  margin-bottom: $spacing-05;
 }
 
-// Tag styling
-.cds--tag {
-  margin-right: 0.5rem;
+.answer-section {
+  margin-top: $spacing-07;
 }
 
-// Modal content spacing
-.cds--modal-content p {
-  margin-bottom: 0.75rem;
+.answer-tile {
+  margin-top: $spacing-05;
+  background-color: $layer-01;
+}
+
+.progress-tile {
+  margin-bottom: $spacing-05;
+  background-color: $layer-02;
+}
+
+.progress-tile__heading {
+  @include type-style('heading-03');
+  margin-bottom: $spacing-03;
+}
+
+.progress-tile__text {
+  @include type-style('body-short-01');
+  margin-bottom: $spacing-03;
+}
+
+.source-tile {
+  margin-top: $spacing-05;
+  background-color: $layer-accent;
+}
+
+.source-tile__heading {
+  @include type-style('heading-02');
+  margin-bottom: $spacing-03;
+}
+
+.source-tile__link {
+  @include type-style('body-short-01');
+  color: $link-primary;
+  word-break: break-all;
+}
+
+.source-tile__helper {
+  @include type-style('helper-text-01');
+  color: $text-secondary;
+  margin-top: $spacing-03;
+}
+
+.table-tile {
+  margin-top: $spacing-05;
+  background-color: $layer-02;
+}
+
+.table-tile__heading {
+  @include type-style('heading-02');
+  margin-bottom: $spacing-03;
+}
+
+.table-tile__content {
+  @include type-style('code-01');
+  white-space: pre-wrap;
+  font-family: 'IBM Plex Mono', monospace;
+  background-color: $background;
+  padding: $spacing-03;
+  border-radius: 4px;
+  overflow: auto;
+}
+
+.ai-services {
+  margin-top: $spacing-05;
+  margin-bottom: $spacing-05;
+}
+
+.ai-services__label {
+  @include type-style('helper-text-01');
+  color: $text-secondary;
+}
+
+.ai-services__tags {
+  display: flex;
+  align-items: center;
+  gap: $spacing-03;
+  flex-wrap: wrap;
+}
+
+.processing-method {
+  margin-top: $spacing-03;
+}
+
+.response-time {
+  margin-top: $spacing-05;
+  @include type-style('label-01');
+  color: $text-secondary;
+}
+
+.clarification-tile {
+  margin-top: $spacing-05;
+  background-color: $layer-01;
+}
+
+.clarification-select {
+  margin-top: $spacing-05;
+}
+
+.button-group {
+  display: flex;
+  gap: $spacing-05;
+  margin-bottom: $spacing-05;
+}
+
+.helper-text {
+  @include type-style('helper-text-01');
+  color: $text-secondary;
+  margin-bottom: $spacing-05;
+}
+
+.description-text {
+  @include type-style('body-long-01');
+  margin-bottom: $spacing-05;
+}
+
+.list-text {
+  @include type-style('body-short-01');
+  margin-bottom: $spacing-05;
+  margin-left: $spacing-06;
+}
+
+.details-modal__text {
+  @include type-style('body-short-01');
+  margin-bottom: $spacing-03;
   
   strong {
     font-weight: 600;
   }
 }
 
-// Responsive adjustments
-@media (max-width: 672px) {
-  .rag-page {
-    padding: 1rem 0;
-    
-    &__banner {
-      padding-bottom: 1rem;
-    }
-  }
-  
-  .tile-spacing {
-    padding: 1rem;
-  }
+.details-modal__link {
+  @include type-style('body-short-01');
+  color: $link-primary;
+  word-break: break-all;
+}
+
+.progress-details {
+  margin-top: $spacing-05;
+}
+
+.progress-details__summary {
+  cursor: pointer;
+  font-weight: 600;
+  @include type-style('body-short-02');
+}
+
+.progress-details__content {
+  margin-top: $spacing-03;
+  @include type-style('helper-text-01');
+}
+
+.progress-details__content--failed {
+  color: $support-error;
 }
 
 // Made with Bob

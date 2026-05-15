@@ -15,16 +15,22 @@ import Image from 'next/image';
 
 export default function LandingPage() {
   return (
-    <Grid className="landing-page" fullWidth>
-      <Column lg={16} md={8} sm={4} className="landing-page__banner">
-        <Breadcrumb noTrailingSlash aria-label="Page navigation">
-          <BreadcrumbItem>
-            <a href="/">Getting started</a>
-          </BreadcrumbItem>
-        </Breadcrumb>
-        <h1 className="landing-page__heading">RAG Demo: GenAI on IBM Power</h1>
-      </Column>
-      <Column lg={16} md={8} sm={4} className="landing-page__r2">
+    <>
+      {/* Banner Section - Separate Grid */}
+      <Grid className="landing-page" fullWidth>
+        <Column lg={16} md={8} sm={4} className="landing-page__banner">
+          <Breadcrumb noTrailingSlash aria-label="Page navigation">
+            <BreadcrumbItem>
+              <a href="/">Getting started</a>
+            </BreadcrumbItem>
+          </Breadcrumb>
+          <h1 className="landing-page__heading">RAG Demo: GenAI on IBM Power</h1>
+        </Column>
+      </Grid>
+
+      {/* Tabs Section - Separate Grid */}
+      <Grid fullWidth>
+        <Column lg={16} md={8} sm={4} className="landing-page__r2">
         <Tabs defaultSelectedIndex={0}>
           <TabList className="tabs-group" aria-label="Tab navigation">
             <Tab>About</Tab>
@@ -84,9 +90,12 @@ export default function LandingPage() {
             </TabPanel>
           </TabPanels>
         </Tabs>
-      </Column>
-      <Column lg={16} md={8} sm={4} className="landing-page__r3">
-        <Grid>
+        </Column>
+      </Grid>
+
+      {/* Principles Section - Separate Grid */}
+      <Grid fullWidth>
+        <Column lg={16} md={8} sm={4} className="landing-page__r3">
           <Column lg={4} md={2} sm={4}>
             <h3 className="landing-page__label">The Principles</h3>
           </Column>
@@ -94,32 +103,29 @@ export default function LandingPage() {
             lg={{ start: 5, span: 3 }}
             md={{ start: 3, span: 6 }}
             sm={4}
-            className="landing-page__title"
-            style={{ textAlign: 'center' }}>
-            <h4>💾 Data Locality</h4>
-            <div>Run GenAI Models where your data lives</div>
+            className="landing-page__title landing-page__title--centered">
+            <h4 className="landing-page__principle-heading">💾 Data Locality</h4>
+            <div className="landing-page__principle-text">Run GenAI Models where your data lives</div>
           </Column>
           <Column
             lg={{ start: 9, span: 3 }}
             md={{ start: 3, span: 6 }}
             sm={4}
-            className="landing-page__title"
-            style={{ textAlign: 'center' }}>
-            <h4>🔒 Security</h4>
-            <div>Ensure data sovereignty</div>
+            className="landing-page__title landing-page__title--centered">
+            <h4 className="landing-page__principle-heading">🔒 Security</h4>
+            <div className="landing-page__principle-text">Ensure data sovereignty</div>
           </Column>
           <Column
             lg={{ start: 13, span: 3 }}
             md={{ start: 3, span: 6 }}
             sm={4}
-            className="landing-page__title"
-            style={{ textAlign: 'center' }}>
-            <h4>⚡ Reliability</h4>
-            <div>Legendary reliability</div>
+            className="landing-page__title landing-page__title--centered">
+            <h4 className="landing-page__principle-heading">⚡ Reliability</h4>
+            <div className="landing-page__principle-text">Legendary reliability</div>
           </Column>
-        </Grid>
-      </Column>
-    </Grid>
+        </Column>
+      </Grid>
+    </>
   );
 }
 

@@ -2,6 +2,7 @@
 @use '@carbon/react/scss/breakpoint' as *;
 @use '../components/Header/header';
 @use '../app/home/landing-page';
+@use '../app/sales-manual/sales-manual-page';
 
 
 /// Remove overrides once Carbon bugs are fixed upstream.

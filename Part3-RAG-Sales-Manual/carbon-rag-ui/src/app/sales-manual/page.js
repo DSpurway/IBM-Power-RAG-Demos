@@ -30,6 +30,8 @@ import {
   ProgressBar,
   Select,
   SelectItem,
+  Layer,
+  preview__IconIndicator as IconIndicator,
 } from '@carbon/react';
 import {
   Checkmark,
@@ -469,16 +471,21 @@ export default function SalesManualPage() {
   }));
 
   return (
-    <Grid className="rag-page" fullWidth>
-      <Column lg={16} md={8} sm={4} className="rag-page__banner">
-        <Breadcrumb noTrailingSlash>
-          <BreadcrumbItem href="/">Home</BreadcrumbItem>
-          <BreadcrumbItem href="/sales-manual">Sales Manual RAG</BreadcrumbItem>
-        </Breadcrumb>
-        <h1 className="rag-page__heading">IBM Power Sales Manual RAG</h1>
-      </Column>
+    <>
+      {/* Banner Section - Separate Grid */}
+      <Grid className="rag-page" fullWidth>
+        <Column lg={16} md={8} sm={4} className="rag-page__banner">
+          <Breadcrumb noTrailingSlash>
+            <BreadcrumbItem href="/">Home</BreadcrumbItem>
+            <BreadcrumbItem href="/sales-manual">Sales Manual RAG</BreadcrumbItem>
+          </Breadcrumb>
+          <h1 className="rag-page__heading">IBM Power Sales Manual RAG</h1>
+        </Column>
+      </Grid>
       
-      <Column lg={16} md={8} sm={4} className="rag-page__content">
+      {/* Content Section - Separate Grid */}
+      <Grid fullWidth>
+        <Column lg={16} md={8} sm={4} className="rag-page__content">
         <Tabs selectedIndex={activeTab} onChange={({ selectedIndex }) => setActiveTab(selectedIndex)}>
           <TabList aria-label="Sales Manual tabs" contained>
             <Tab>Manage Source Documents</Tab>
@@ -492,7 +499,7 @@ export default function SalesManualPage() {
                 <Column lg={16}>
                   <Tile className="tile-spacing">
                     <h3>IBM Power Server Documentation Management</h3>
-                    <p style={{ marginBottom: '1rem' }}>
+                    <p className="description-text">
                       Manage Sales Manual documentation for 26 IBM Power servers (POWER9, POWER10, POWER11).
                       Each server's documentation is scraped from IBM Docs and indexed for RAG queries.
                     </p>
@@ -503,51 +510,53 @@ export default function SalesManualPage() {
                         title={error.startsWith('Error') ? 'Error' : 'Status'}
                         subtitle={error}
                         onCloseButtonClick={() => setError('')}
-                        style={{ marginBottom: '1rem' }}
+                        className="section-spacing"
                       />
                     )}
                     
                     {/* Bulk Ingestion Progress */}
                     {bulkIngestionInProgress && bulkIngestionStatus && (
-                      <Tile style={{ marginBottom: '1rem', backgroundColor: '#e0e0e0' }}>
-                        <h4 style={{ marginBottom: '0.5rem' }}>Bulk Ingestion Progress</h4>
-                        <p style={{ marginBottom: '0.5rem' }}>
-                          <strong>Current Server:</strong> {bulkIngestionStatus.current_server || 'Starting...'}
-                        </p>
-                        <p style={{ marginBottom: '0.5rem' }}>
-                          <strong>Progress:</strong> {bulkIngestionStatus.completed_count} of {bulkIngestionStatus.total} completed
-                          {bulkIngestionStatus.failed_count > 0 && ` (${bulkIngestionStatus.failed_count} failed)`}
-                        </p>
-                        <ProgressBar
-                          label="Ingestion Progress"
-                          value={bulkIngestionStatus.completed_count}
-                          max={bulkIngestionStatus.total}
-                          helperText={`${Math.round((bulkIngestionStatus.completed_count / bulkIngestionStatus.total) * 100)}% complete`}
-                        />
-                        {bulkIngestionStatus.completed && bulkIngestionStatus.completed.length > 0 && (
-                          <details style={{ marginTop: '1rem' }}>
-                            <summary style={{ cursor: 'pointer', fontWeight: 'bold' }}>
-                              Completed Servers ({bulkIngestionStatus.completed.length})
-                            </summary>
-                            <div style={{ marginTop: '0.5rem', fontSize: '0.875rem' }}>
-                              {bulkIngestionStatus.completed.join(', ')}
-                            </div>
-                          </details>
-                        )}
-                        {bulkIngestionStatus.failed && bulkIngestionStatus.failed.length > 0 && (
-                          <details style={{ marginTop: '0.5rem' }}>
-                            <summary style={{ cursor: 'pointer', fontWeight: 'bold', color: '#da1e28' }}>
-                              Failed Servers ({bulkIngestionStatus.failed.length})
-                            </summary>
-                            <div style={{ marginTop: '0.5rem', fontSize: '0.875rem', color: '#da1e28' }}>
-                              {bulkIngestionStatus.failed.join(', ')}
-                            </div>
-                          </details>
-                        )}
-                      </Tile>
+                      <Layer withBackground>
+                        <Tile className="progress-tile">
+                          <h4 className="progress-tile__heading">Bulk Ingestion Progress</h4>
+                          <p className="progress-tile__text">
+                            <strong>Current Server:</strong> {bulkIngestionStatus.current_server || 'Starting...'}
+                          </p>
+                          <p className="progress-tile__text">
+                            <strong>Progress:</strong> {bulkIngestionStatus.completed_count} of {bulkIngestionStatus.total} completed
+                            {bulkIngestionStatus.failed_count > 0 && ` (${bulkIngestionStatus.failed_count} failed)`}
+                          </p>
+                          <ProgressBar
+                            label="Ingestion Progress"
+                            value={bulkIngestionStatus.completed_count}
+                            max={bulkIngestionStatus.total}
+                            helperText={`${Math.round((bulkIngestionStatus.completed_count / bulkIngestionStatus.total) * 100)}% complete`}
+                          />
+                          {bulkIngestionStatus.completed && bulkIngestionStatus.completed.length > 0 && (
+                            <details className="progress-details">
+                              <summary className="progress-details__summary">
+                                Completed Servers ({bulkIngestionStatus.completed.length})
+                              </summary>
+                              <div className="progress-details__content">
+                                {bulkIngestionStatus.completed.join(', ')}
+                              </div>
+                            </details>
+                          )}
+                          {bulkIngestionStatus.failed && bulkIngestionStatus.failed.length > 0 && (
+                            <details className="progress-details">
+                              <summary className="progress-details__summary progress-details__content--failed">
+                                Failed Servers ({bulkIngestionStatus.failed.length})
+                              </summary>
+                              <div className="progress-details__content progress-details__content--failed">
+                                {bulkIngestionStatus.failed.join(', ')}
+                              </div>
+                            </details>
+                          )}
+                        </Tile>
+                      </Layer>
                     )}
                     
-                    <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
+                    <div className="button-group">
                       <Button
                         onClick={loadServerStatus}
                         disabled={loading || bulkIngestionInProgress}
@@ -586,13 +595,13 @@ export default function SalesManualPage() {
                                         return (
                                           <TableCell key={cell.id}>
                                             {server.status === 'indexed' && (
-                                              <Tag type="green" renderIcon={Checkmark}>Indexed</Tag>
+                                              <IconIndicator kind="succeeded" size="sm">Indexed</IconIndicator>
                                             )}
                                             {server.status === 'not-indexed' && (
-                                              <Tag type="gray">Not Indexed</Tag>
+                                              <IconIndicator kind="pending" size="sm">Not Indexed</IconIndicator>
                                             )}
                                             {server.status === 'unknown' && (
-                                              <Tag type="red" renderIcon={WarningAlt}>Unknown</Tag>
+                                              <IconIndicator kind="failed" size="sm">Unknown</IconIndicator>
                                             )}
                                           </TableCell>
                                         );
@@ -642,15 +651,15 @@ export default function SalesManualPage() {
                 <Column lg={16}>
                   <Tile className="tile-spacing">
                     <h3>Query IBM Power Documentation</h3>
-                    <p style={{ marginBottom: '1rem' }}>
+                    <p className="description-text">
                       Ask questions about IBM Power servers using our <strong>Hybrid AI System</strong>:
                     </p>
-                    <ul style={{ marginBottom: '1rem', marginLeft: '1.5rem' }}>
+                    <ul className="list-text">
                       <li><strong>watsonx Assistant</strong> - Natural language understanding and intent detection</li>
                       <li><strong>OpenSearch Vector DB</strong> - Semantic search with preserved table structures</li>
                       <li><strong>Granite LLM</strong> - Generative AI for complex queries requiring synthesis</li>
                     </ul>
-                    <p style={{ marginBottom: '1rem', fontSize: '0.875rem', color: '#525252' }}>
+                    <p className="helper-text">
                       <em>Note: Simple data lookups (like lifecycle dates) are answered directly from structured tables without using the LLM, providing faster and more accurate responses.</em>
                     </p>
                     
@@ -668,7 +677,7 @@ export default function SalesManualPage() {
                         }
                       }}
                       rows={3}
-                      style={{ marginBottom: '1rem' }}
+                      className="section-spacing"
                       helperText="Press Enter to submit, Shift+Enter for new line"
                     />
                     
@@ -680,14 +689,14 @@ export default function SalesManualPage() {
                     </Button>
                     
                     {queryResults && (
-                      <div style={{ marginTop: '2rem' }}>
+                      <div className="answer-section">
                         <h4>Answer:</h4>
                         
                         {/* AI Services Attribution */}
                         {queryResults.ai_services_used && queryResults.ai_services_used.length > 0 && (
-                          <div style={{ marginTop: '1rem', marginBottom: '1rem' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-                              <span style={{ fontSize: '0.875rem', color: '#525252' }}>AI Services:</span>
+                          <div className="ai-services">
+                            <div className="ai-services__tags">
+                              <span className="ai-services__label">AI Services:</span>
                               {queryResults.ai_services_used.map((service, idx) => {
                                 // Map service names to display names and colors
                                 const serviceConfig = {
@@ -703,7 +712,7 @@ export default function SalesManualPage() {
                                 );
                               })}
                             </div>
-                            <div style={{ marginTop: '0.5rem' }}>
+                            <div className="processing-method">
                               <Tag type="outline" size="sm">
                                 {queryResults.processing_method === 'nlp_intent_detection' && 'NLP Intent Detection'}
                                 {queryResults.processing_method === 'hybrid_table_lookup' && 'Hybrid: Direct Table Lookup (No LLM)'}
@@ -716,15 +725,17 @@ export default function SalesManualPage() {
                         {/* Check if clarification is needed */}
                         {queryResults.clarification_options && queryResults.clarification_options.length > 0 ? (
                           <div>
-                            <Tile style={{ marginTop: '1rem', backgroundColor: '#f4f4f4' }}>
-                              <p>{queryResults.content}</p>
-                            </Tile>
+                            <Layer withBackground>
+                              <Tile className="clarification-tile">
+                                <p>{queryResults.content}</p>
+                              </Tile>
+                            </Layer>
                             <Select
                               id="clarification-select"
                               labelText="Please select an option:"
                               value={selectedClarification}
                               onChange={(e) => handleClarificationSelect(e.target.value)}
-                              style={{ marginTop: '1rem' }}
+                              className="clarification-select"
                             >
                               <SelectItem value="" text="Choose an option..." />
                               {queryResults.clarification_options.map((opt, idx) => (
@@ -734,55 +745,47 @@ export default function SalesManualPage() {
                           </div>
                         ) : (
                           <>
-                            <Tile style={{ marginTop: '1rem', backgroundColor: '#f4f4f4' }}>
-                              <div
-                                style={{ whiteSpace: 'pre-line' }}
-                                dangerouslySetInnerHTML={{ __html: queryResults.content || queryResults.answer }}
-                              />
+                            <Layer withBackground>
+                              <Tile className="answer-tile">
+                                <div
+                                  style={{ whiteSpace: 'pre-line' }}
+                                  dangerouslySetInnerHTML={{ __html: queryResults.content || queryResults.answer }}
+                                />
                               
-                              {/* Show response time for table lookups */}
-                              {queryResults.response_time_ms && (
-                                <div style={{ marginTop: '1rem', fontSize: '0.75rem', color: '#525252' }}>
-                                  Response time: {queryResults.response_time_ms}ms
-                                </div>
-                              )}
-                            </Tile>
+                                {/* Show response time for table lookups */}
+                                {queryResults.response_time_ms && (
+                                  <div className="response-time">
+                                    Response time: {queryResults.response_time_ms}ms
+                                  </div>
+                                )}
+                              </Tile>
+                            </Layer>
                             
                             {/* Display table data if available (for table lookups) */}
                             {queryResults.table_data && (
-                              <Tile style={{ marginTop: '1rem', backgroundColor: '#e0e0e0' }}>
-                                <h5 style={{ marginBottom: '0.5rem' }}>Lifecycle Table from Sales Manual:</h5>
-                                <pre style={{
-                                  fontSize: '0.75rem',
-                                  whiteSpace: 'pre-wrap',
-                                  fontFamily: 'monospace',
-                                  backgroundColor: '#ffffff',
-                                  padding: '0.5rem',
-                                  borderRadius: '4px',
-                                  overflow: 'auto'
-                                }}>
-                                  {queryResults.table_data}
-                                </pre>
-                              </Tile>
+                              <Layer withBackground>
+                                <Tile className="table-tile">
+                                  <h5 className="table-tile__heading">Lifecycle Table from Sales Manual:</h5>
+                                  <pre className="table-tile__content">
+                                    {queryResults.table_data}
+                                  </pre>
+                                </Tile>
+                              </Layer>
                             )}
                             
                             {/* Display source URL if available */}
                             {queryResults.source_url && (
-                              <Tile style={{ marginTop: '1rem', backgroundColor: '#e8f4fd' }}>
-                                <h5 style={{ marginBottom: '0.5rem' }}>Source:</h5>
+                              <Tile className="source-tile">
+                                <h5 className="source-tile__heading">Source:</h5>
                                 <a
                                   href={queryResults.source_url}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  style={{
-                                    fontSize: '0.875rem',
-                                    wordBreak: 'break-all',
-                                    color: '#0f62fe'
-                                  }}
+                                  className="source-tile__link"
                                 >
                                   {queryResults.source_filename || queryResults.source_url}
                                 </a>
-                                <p style={{ fontSize: '0.75rem', color: '#525252', marginTop: '0.5rem' }}>
+                                <p className="source-tile__helper">
                                   Click to verify this information in the original IBM Sales Manual
                                 </p>
                               </Tile>
@@ -808,7 +811,8 @@ export default function SalesManualPage() {
             </TabPanel>
           </TabPanels>
         </Tabs>
-      </Column>
+        </Column>
+      </Grid>
       
       {/* Server Details Modal */}
       <Modal
@@ -819,22 +823,22 @@ export default function SalesManualPage() {
       >
         {selectedServer && (
           <div>
-            <p><strong>Full Name:</strong> {selectedServer.name}</p>
-            <p><strong>MTM:</strong> {selectedServer.mtm}</p>
-            <p><strong>Processor:</strong> {selectedServer.processor}</p>
-            <p><strong>Category:</strong> {selectedServer.category}</p>
-            <p><strong>Status:</strong> {selectedServer.status}</p>
-            <p><strong>Document Count:</strong> {selectedServer.documentCount}</p>
-            <p><strong>Last Updated:</strong> {selectedServer.lastUpdated || 'Never'}</p>
-            <p><strong>Content Hash:</strong> {selectedServer.contentHash || 'Not calculated'}</p>
-            <p><strong>Sales Manual URL:</strong></p>
-            <a href={selectedServer.url} target="_blank" rel="noopener noreferrer" style={{ wordBreak: 'break-all', fontSize: '0.875rem' }}>
+            <p className="details-modal__text"><strong>Full Name:</strong> {selectedServer.name}</p>
+            <p className="details-modal__text"><strong>MTM:</strong> {selectedServer.mtm}</p>
+            <p className="details-modal__text"><strong>Processor:</strong> {selectedServer.processor}</p>
+            <p className="details-modal__text"><strong>Category:</strong> {selectedServer.category}</p>
+            <p className="details-modal__text"><strong>Status:</strong> {selectedServer.status}</p>
+            <p className="details-modal__text"><strong>Document Count:</strong> {selectedServer.documentCount}</p>
+            <p className="details-modal__text"><strong>Last Updated:</strong> {selectedServer.lastUpdated || 'Never'}</p>
+            <p className="details-modal__text"><strong>Content Hash:</strong> {selectedServer.contentHash || 'Not calculated'}</p>
+            <p className="details-modal__text"><strong>Sales Manual URL:</strong></p>
+            <a href={selectedServer.url} target="_blank" rel="noopener noreferrer" className="details-modal__link">
               {selectedServer.url}
             </a>
           </div>
         )}
       </Modal>
-    </Grid>
+    </>
   );
 }
 
