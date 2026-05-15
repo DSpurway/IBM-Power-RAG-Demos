@@ -31,7 +31,6 @@ import {
   Select,
   SelectItem,
   Layer,
-  preview__IconIndicator as IconIndicator,
 } from '@carbon/react';
 import {
   Checkmark,
@@ -595,13 +594,13 @@ export default function SalesManualPage() {
                                         return (
                                           <TableCell key={cell.id}>
                                             {server.status === 'indexed' && (
-                                              <IconIndicator kind="succeeded" size="sm">Indexed</IconIndicator>
+                                              <Tag type="green" size="sm">Indexed</Tag>
                                             )}
                                             {server.status === 'not-indexed' && (
-                                              <IconIndicator kind="pending" size="sm">Not Indexed</IconIndicator>
+                                              <Tag type="gray" size="sm">Not Indexed</Tag>
                                             )}
                                             {server.status === 'unknown' && (
-                                              <IconIndicator kind="failed" size="sm">Unknown</IconIndicator>
+                                              <Tag type="red" size="sm">Unknown</Tag>
                                             )}
                                           </TableCell>
                                         );

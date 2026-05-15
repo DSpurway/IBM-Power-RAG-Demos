@@ -22,6 +22,8 @@ import {
   StructuredListRow,
   StructuredListCell,
   StructuredListBody,
+  AILabel,
+  AILabelContent,
 } from '@carbon/react';
 import {
   DataStorage,
@@ -537,20 +539,33 @@ Mr. Dursley was the director of a firm called Grunnings, which made drills. He w
 
                     {part1Answer && (
                       <div className="ai-response">
-                        <div className="ai-response__header">
-                          <Bot size={20} className="ai-response__icon" />
-                          <h4 className="ai-response__title">AI Response (TinyLlama)</h4>
-                        </div>
-                        <div className="ai-response__content">
-                          {part1Answer}
-                        </div>
+                        <Tile style={{ padding: '1.5rem', marginTop: '1rem' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
+                            <h4 style={{ margin: 0, fontSize: '1rem' }}>AI Response</h4>
+                            <AILabel size="sm">
+                              <AILabelContent>
+                                <div>
+                                  <p className="secondary">AI Generated</p>
+                                  <p className="secondary">TinyLlama 1.1B</p>
+                                </div>
+                              </AILabelContent>
+                            </AILabel>
+                          </div>
+                          <p style={{
+                            fontSize: '0.875rem',
+                            whiteSpace: 'pre-wrap',
+                            marginBottom: 0
+                          }}>
+                            {part1Answer}
+                          </p>
+                        </Tile>
                         <InlineNotification
                           kind="warning"
                           lowContrast
                           subtitle="This response is generated without RAG context and may contain inaccuracies or hallucinations."
                           title="No context provided"
                           hideCloseButton
-                          className="section-spacing"
+                          style={{ marginTop: '1rem' }}
                         />
                       </div>
                     )}

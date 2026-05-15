@@ -24,55 +24,19 @@
   margin-bottom: $spacing-07;
 }
 
-// AI Response Container
+// AI Response - Simple styling like working project
 .ai-response {
   margin-top: $spacing-05;
-}
-
-.ai-response__header {
-  display: flex;
-  align-items: center;
-  margin-bottom: $spacing-03;
-  padding: $spacing-03 $spacing-05;
-  background-color: $layer-02;
-  border-radius: 4px 4px 0 0;
-}
-
-.ai-response__icon {
-  margin-right: $spacing-03;
-  color: $icon-primary;
-}
-
-.ai-response__title {
-  @include type-style('heading-compact-01');
-  margin: 0;
-  color: $text-primary;
-}
-
-.ai-response__content {
-  padding: $spacing-05;
-  background-color: $layer-01;
-  border-left: 4px solid $border-interactive;
-  border-radius: 0 0 4px 4px;
   
-  @include type-style('body-long-01');
-  color: $text-primary;
-  line-height: 1.6;
-  white-space: pre-wrap;
-  word-wrap: break-word;
-}
-
-// RAG-enhanced response (with context)
-.ai-response--rag {
-  .ai-response__content {
-    border-left-color: $support-success;
+  h4 {
+    @include type-style('productive-heading-02');
+    margin-bottom: $spacing-03;
   }
-}
-
-// Warning/No context response
-.ai-response--warning {
-  .ai-response__content {
-    border-left-color: $support-warning;
+  
+  p {
+    @include type-style('body-long-01');
+    white-space: pre-wrap;
+    margin-bottom: 0;
   }
 }
 
