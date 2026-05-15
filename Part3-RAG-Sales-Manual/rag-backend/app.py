@@ -1627,9 +1627,9 @@ def generate():
             logger.info(f"Found {len(hits)} potential activation chunks")
             
             # Extract activation features from chunks
-            # Process features one at a time to prevent gateway timeouts
-            # Each LLM call takes ~10s, so we limit to 3 calls = ~30s max
-            activation_service = ActivationFeatureService(max_llm_calls=3)
+            # Limit LLM calls to prevent gateway timeouts
+            # With increased timeout (30s) and max 3 calls, we can test if Granite completes successfully
+            activation_service = ActivationFeatureService(use_llm_descriptions=True, max_llm_calls=3)
             chunks = [{'text': hit['_source']['text'], 'metadata': hit['_source'].get('metadata', {})}
                      for hit in hits]
             

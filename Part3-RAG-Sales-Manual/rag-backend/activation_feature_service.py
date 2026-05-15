@@ -72,13 +72,13 @@ class ActivationFeatureService:
         'cod',
     ]
     
-    def __init__(self, use_llm_descriptions: bool = True, max_llm_calls: int = 10):
+    def __init__(self, use_llm_descriptions: bool = True, max_llm_calls: int = 3):
         """
         Initialize the activation feature service
         
         Args:
             use_llm_descriptions: Whether to use LLM to generate cleaner descriptions
-            max_llm_calls: Maximum number of LLM calls to make (to prevent timeouts)
+            max_llm_calls: Maximum number of LLM calls to make (to prevent timeouts, default: 3)
         """
         self.use_llm_descriptions = use_llm_descriptions
         self.max_llm_calls = max_llm_calls
@@ -121,7 +121,9 @@ Do not include the feature code in your description. Be specific and factual.
 
 Description:"""
 
-            # Call the Granite LLM service
+            # Call the Granite LLM service with timing
+            import time
+            start_time = time.time()
             logger.info(f"Requesting Granite LLM description for {feature_code} (call {self.llm_calls_made + 1}/{self.max_llm_calls})")
             self.llm_calls_made += 1
             
@@ -133,8 +135,11 @@ Description:"""
                     "temperature": 0.2,  # Lower temperature for more focused output
                     "stop": ["\n\n", "Feature Code:", "Sales Manual", "\n"]  # Stop at line break
                 },
-                timeout=10  # Reduced timeout to 10 seconds to prevent gateway timeouts
+                timeout=30  # Increased timeout to see if Granite can complete
             )
+            
+            elapsed_time = time.time() - start_time
+            logger.info(f"Granite LLM response received in {elapsed_time:.2f} seconds")
             
             if response.status_code == 200:
                 result = response.json()
@@ -158,6 +163,9 @@ Description:"""
                 logger.warning(f"Granite LLM request failed with status {response.status_code}")
                 return None
                 
+        except requests.exceptions.Timeout:
+            logger.warning(f"Granite LLM timeout for {feature_code} - skipping (Granite service may be overloaded)")
+            return None
         except Exception as e:
             logger.warning(f"Failed to generate Granite description for {feature_code}: {e}")
             return None
