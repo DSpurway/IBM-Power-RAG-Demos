@@ -846,7 +846,9 @@ def search():
             logger.info(f"Found {len(hits)} potential activation chunks")
             
             # Extract activation features from chunks
-            activation_service = ActivationFeatureService()
+            # Process features one at a time to prevent gateway timeouts
+            # Each LLM call takes ~10s, so we limit to 3 calls = ~30s max
+            activation_service = ActivationFeatureService(max_llm_calls=3)
             chunks = [{'text': hit['_source']['text'], 'metadata': hit['_source'].get('metadata', {})}
                      for hit in hits]
             
@@ -1625,7 +1627,9 @@ def generate():
             logger.info(f"Found {len(hits)} potential activation chunks")
             
             # Extract activation features from chunks
-            activation_service = ActivationFeatureService()
+            # Process features one at a time to prevent gateway timeouts
+            # Each LLM call takes ~10s, so we limit to 3 calls = ~30s max
+            activation_service = ActivationFeatureService(max_llm_calls=3)
             chunks = [{'text': hit['_source']['text'], 'metadata': hit['_source'].get('metadata', {})}
                      for hit in hits]
             

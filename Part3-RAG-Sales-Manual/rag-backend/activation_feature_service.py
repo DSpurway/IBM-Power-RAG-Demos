@@ -2,14 +2,22 @@
 Activation Feature Service
 Handles queries about processor and memory activation features
 Extracts feature codes and availability status from sales manual chunks
+Enhanced with LLM-based description generation for clearer output
 """
 
 import re
 import logging
+import requests
 from typing import List, Dict, Optional, Tuple
 from datetime import datetime
+import os
 
 logger = logging.getLogger(__name__)
+
+# LLM Configuration for description generation
+# IMPORTANT: Use Granite service (not TinyLlama) for better quality descriptions
+GRANITE_HOST = os.environ.get('GRANITE_HOST', 'granite-llama-service')
+GRANITE_PORT = os.environ.get('GRANITE_PORT', '8080')
 
 
 class ActivationFeature:
@@ -64,9 +72,95 @@ class ActivationFeatureService:
         'cod',
     ]
     
-    def __init__(self):
-        """Initialize the activation feature service"""
-        pass
+    def __init__(self, use_llm_descriptions: bool = True, max_llm_calls: int = 10):
+        """
+        Initialize the activation feature service
+        
+        Args:
+            use_llm_descriptions: Whether to use LLM to generate cleaner descriptions
+            max_llm_calls: Maximum number of LLM calls to make (to prevent timeouts)
+        """
+        self.use_llm_descriptions = use_llm_descriptions
+        self.max_llm_calls = max_llm_calls
+        self.llm_calls_made = 0
+        self.llm_url = f"http://{GRANITE_HOST}:{GRANITE_PORT}/v1/completions"
+    
+    def _generate_llm_description(self, feature_code: str, raw_text: str) -> Optional[str]:
+        """
+        Use Granite LLM to generate a clear, concise description from raw chunk text
+        
+        Args:
+            feature_code: The feature code (e.g., EDAR, ELCP)
+            raw_text: Raw text from the sales manual chunk (full chunk for better context)
+            
+        Returns:
+            Clean description or None if generation fails
+        """
+        if not self.use_llm_descriptions:
+            return None
+        
+        # Check if we've exceeded the maximum number of LLM calls
+        if self.llm_calls_made >= self.max_llm_calls:
+            logger.warning(f"Skipping LLM description for {feature_code} - max calls ({self.max_llm_calls}) reached")
+            return None
+        
+        try:
+            # Create a focused prompt for Granite LLM
+            # Pass the FULL chunk for better context understanding
+            prompt = f"""Based on the following IBM Power Systems sales manual text about feature code #{feature_code}, provide a single clear sentence describing what this activation feature is for.
+
+Sales Manual Text:
+{raw_text}
+
+Provide ONLY a concise description (one sentence, maximum 100 words) that explains:
+1. What type of activation it is (processor/memory)
+2. The capacity or amount
+3. Any important restrictions (e.g., "not orderable in China", "Linux only", "Pools 2.0")
+
+Do not include the feature code in your description. Be specific and factual.
+
+Description:"""
+
+            # Call the Granite LLM service
+            logger.info(f"Requesting Granite LLM description for {feature_code} (call {self.llm_calls_made + 1}/{self.max_llm_calls})")
+            self.llm_calls_made += 1
+            
+            response = requests.post(
+                self.llm_url,
+                json={
+                    "prompt": prompt,
+                    "max_tokens": 120,  # Limit to ensure concise response
+                    "temperature": 0.2,  # Lower temperature for more focused output
+                    "stop": ["\n\n", "Feature Code:", "Sales Manual", "\n"]  # Stop at line break
+                },
+                timeout=10  # Reduced timeout to 10 seconds to prevent gateway timeouts
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                description = result.get('choices', [{}])[0].get('text', '').strip()
+                
+                # Clean up the description
+                description = description.replace('\n', ' ')
+                description = re.sub(r'\s+', ' ', description)
+                
+                # Remove any leading/trailing quotes or extra punctuation
+                description = description.strip('"\'.,;: ')
+                
+                # Ensure it's a reasonable length (not too short, not too long)
+                if description and 20 <= len(description) <= 500:
+                    logger.info(f"Generated Granite description for {feature_code}: {description[:100]}...")
+                    return description
+                else:
+                    logger.warning(f"Granite description length invalid for {feature_code}: {len(description)} chars")
+                    return None
+            else:
+                logger.warning(f"Granite LLM request failed with status {response.status_code}")
+                return None
+                
+        except Exception as e:
+            logger.warning(f"Failed to generate Granite description for {feature_code}: {e}")
+            return None
     
     def is_activation_query(self, query: str) -> bool:
         """
@@ -112,26 +206,71 @@ class ActivationFeatureService:
         
         # Extract feature code from the beginning (usually in heading)
         # Pattern: (#CODE) Description or #CODE Description
-        feature_match = self.FEATURE_CODE_PATTERN.search(chunk_text[:200])
+        feature_match = self.FEATURE_CODE_PATTERN.search(chunk_text[:500])
         if not feature_match:
             return None
         
         feature_code = feature_match.group(1)
         
-        # Extract description (first line or up to first newline)
-        # Keep the full line including the feature code for clarity
-        lines = chunk_text.split('\n')
-        description = lines[0].strip() if lines else ""
+        # Try to generate a clean description using LLM first
+        llm_description = self._generate_llm_description(feature_code, chunk_text)
         
-        # Only clean up if the description is just the feature code alone
-        # Otherwise keep the full descriptive text
-        if description == f"#{feature_code}" or description == f"(#{feature_code})":
-            # If it's just the code, try to get more context from next line
-            if len(lines) > 1:
-                description = lines[1].strip()
-        
-        # Remove any leading/trailing whitespace
-        description = description.strip()
+        if llm_description:
+            description = llm_description
+        else:
+            # Fall back to manual extraction
+            # Find the line containing the feature code and collect description
+            # Format: "(#ELME) 512 GB Power Linux Memory Activations for HEX"
+            # May continue on next lines until we hit bullets or "Attributes provided"
+            lines = chunk_text.split('\n')
+            description_lines = []
+            found_feature_line = False
+            
+            for i, line in enumerate(lines[:15]):  # Check first 15 lines
+                line_stripped = line.strip()
+                
+                # Skip empty lines before we find the feature
+                if not found_feature_line and not line_stripped:
+                    continue
+                
+                # Found the line with the feature code
+                if not found_feature_line and (f"#{feature_code}" in line or f"(#{feature_code})" in line):
+                    found_feature_line = True
+                    description_lines.append(line_stripped)
+                    continue
+                
+                # After finding feature line, continue collecting description
+                if found_feature_line:
+                    # Stop at bullet points or "Attributes provided" section
+                    if (line_stripped.startswith('•') or
+                        line_stripped.startswith('-') or
+                        line_stripped.startswith('*') or
+                        'attributes provided' in line_stripped.lower() or
+                        line_stripped.startswith('Attributes:') or
+                        not line_stripped):  # Stop at empty line
+                        break
+                    
+                    # Add continuation lines
+                    description_lines.append(line_stripped)
+            
+            # Join the description lines
+            description = ' '.join(description_lines)
+            
+            # Remove page references like "(Part 73/690)" or similar patterns
+            description = re.sub(r'\s*\(Part\s+\d+/\d+\)', '', description)
+            description = re.sub(r'\s*\(Page\s+\d+/\d+\)', '', description)
+            description = re.sub(r'\s*\[Part\s+\d+/\d+\]', '', description)
+            description = re.sub(r'\s*\[Page\s+\d+/\d+\]', '', description)
+            
+            # Clean up any double spaces
+            description = re.sub(r'\s+', ' ', description).strip()
+            
+            # If we didn't find a good description, fall back to first non-empty line
+            if not description:
+                for line in lines:
+                    if line.strip():
+                        description = line.strip()
+                        break
         
         # Check for discontinued date
         discontinued_date = None
@@ -163,7 +302,12 @@ class ActivationFeatureService:
         features = []
         seen_codes = set()
         
-        for chunk in chunks:
+        # Reset LLM call counter for this extraction batch
+        self.llm_calls_made = 0
+        
+        logger.info(f"Processing {len(chunks)} chunks for activation features (max {self.max_llm_calls} LLM calls)")
+        
+        for i, chunk in enumerate(chunks):
             chunk_text = chunk.get('text', '')
             metadata = chunk.get('metadata', {})
             
@@ -171,8 +315,9 @@ class ActivationFeatureService:
             if feature and feature.feature_code not in seen_codes:
                 features.append(feature)
                 seen_codes.add(feature.feature_code)
-                logger.info(f"Extracted feature: {feature.feature_code} - {feature.status}")
+                logger.info(f"Extracted feature {len(features)}: {feature.feature_code} - {feature.status}")
         
+        logger.info(f"Extraction complete: {len(features)} features found, {self.llm_calls_made} LLM calls made")
         return features
     
     def categorize_features(self, features: List[ActivationFeature]) -> Dict[str, List[ActivationFeature]]:
@@ -269,7 +414,7 @@ class ActivationFeatureService:
         
         return summary
     
-    def generate_activation_answer(self, features: List[ActivationFeature], 
+    def generate_activation_answer(self, features: List[ActivationFeature],
                                    query: str = "") -> str:
         """
         Generate a natural language answer about activation features
@@ -279,7 +424,7 @@ class ActivationFeatureService:
             query: Original user query
             
         Returns:
-            Natural language answer string
+            Natural language answer string with AI-generated disclaimer
         """
         if not features:
             return "I couldn't find any activation features in the sales manual for this server."
@@ -288,6 +433,9 @@ class ActivationFeatureService:
         categories = self.categorize_features(features)
         available = [f for f in features if f.is_available]
         discontinued = [f for f in features if not f.is_available]
+        
+        # Check if any descriptions are AI-generated
+        has_ai_descriptions = self.use_llm_descriptions
         
         # Build answer
         answer_parts = []
@@ -307,28 +455,78 @@ class ActivationFeatureService:
                 f"I found {len(discontinued)} activation feature(s), but all are discontinued."
             )
         
-        # Available features
+        # Add AI disclaimer if using LLM descriptions
+        if has_ai_descriptions:
+            if self.llm_calls_made >= self.max_llm_calls and len(features) > self.max_llm_calls:
+                answer_parts.append(
+                    f"\n<em style='color: #888; font-size: 0.9em;'>Note: AI-generated descriptions shown for first {self.max_llm_calls} feature(s) to prevent timeouts. Remaining features show manual extraction. All descriptions may contain inaccuracies.</em>"
+                )
+            else:
+                answer_parts.append(
+                    "\n<em style='color: #888; font-size: 0.9em;'>Note: Feature descriptions are AI-generated from sales manual content and may contain inaccuracies.</em>"
+                )
+        
+        # Available features - organized by category
         if available:
             answer_parts.append("\n\n<strong>Currently Available:</strong>")
-            for feature in available:
-                answer_parts.append(f"- <strong>{feature.feature_code}</strong>: {feature.description}")
+            
+            # Group by category for better organization
+            if categories['processor']:
+                answer_parts.append("\n<em>Processor Activations:</em>")
+                for feature in categories['processor']:
+                    if feature.is_available:
+                        # Clean up description - remove feature code if it's at the start
+                        desc = feature.description
+                        desc = re.sub(rf'^\(#{feature.feature_code}\)\s*[-:]?\s*', '', desc)
+                        desc = re.sub(rf'^#{feature.feature_code}\s*[-:]?\s*', '', desc)
+                        answer_parts.append(f"- <strong>#{feature.feature_code}</strong>: {desc}")
+            
+            if categories['memory']:
+                answer_parts.append("\n<em>Memory Activations:</em>")
+                for feature in categories['memory']:
+                    if feature.is_available:
+                        # Clean up description - remove feature code if it's at the start
+                        desc = feature.description
+                        desc = re.sub(rf'^\(#{feature.feature_code}\)\s*[-:]?\s*', '', desc)
+                        desc = re.sub(rf'^#{feature.feature_code}\s*[-:]?\s*', '', desc)
+                        answer_parts.append(f"- <strong>#{feature.feature_code}</strong>: {desc}")
+            
+            if categories['other']:
+                answer_parts.append("\n<em>Other Activations:</em>")
+                for feature in categories['other']:
+                    if feature.is_available:
+                        # Clean up description - remove feature code if it's at the start
+                        desc = feature.description
+                        desc = re.sub(rf'^\(#{feature.feature_code}\)\s*[-:]?\s*', '', desc)
+                        desc = re.sub(rf'^#{feature.feature_code}\s*[-:]?\s*', '', desc)
+                        answer_parts.append(f"- <strong>#{feature.feature_code}</strong>: {desc}")
         
         # Discontinued features
         if discontinued:
             answer_parts.append("\n\n<strong>Discontinued:</strong>")
             for feature in discontinued:
+                # Clean up description - remove feature code if it's at the start
+                desc = feature.description
+                desc = re.sub(rf'^\(#{feature.feature_code}\)\s*[-:]?\s*', '', desc)
+                desc = re.sub(rf'^#{feature.feature_code}\s*[-:]?\s*', '', desc)
                 answer_parts.append(
-                    f"- <strong>{feature.feature_code}</strong>: {feature.description} "
-                    f"(No longer available as of {feature.discontinued_date})"
+                    f"- <strong>#{feature.feature_code}</strong>: {desc} "
+                    f"<em>(No longer available as of {feature.discontinued_date})</em>"
                 )
         
         return "\n".join(answer_parts)
 
 
 # Convenience function
-def extract_activation_features(chunks: List[Dict]) -> List[ActivationFeature]:
-    """Quick extraction without creating service instance"""
-    service = ActivationFeatureService()
+def extract_activation_features(chunks: List[Dict], max_llm_calls: int = 10) -> List[ActivationFeature]:
+    """
+    Quick extraction without creating service instance
+    
+    Args:
+        chunks: List of chunk dictionaries
+        max_llm_calls: Maximum number of LLM calls to prevent timeouts (default: 10)
+    """
+    service = ActivationFeatureService(max_llm_calls=max_llm_calls)
     return service.extract_features_from_chunks(chunks)
 
 
