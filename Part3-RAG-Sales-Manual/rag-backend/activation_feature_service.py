@@ -70,6 +70,11 @@ class ActivationFeatureService:
         'core activation',
         'capacity on demand',
         'cod',
+        ' proc act ',
+        ' mem act ',
+        'base proc act',
+        'proc act',
+        'memory act',
     ]
     
     def __init__(self, use_llm_descriptions: bool = True, max_llm_calls: int = 1):
@@ -85,13 +90,65 @@ class ActivationFeatureService:
         self.llm_calls_made = 0
         self.llm_url = f"http://{GRANITE_HOST}:{GRANITE_PORT}/v1/completions"
     
+    def _extract_feature_excerpt(self, feature_code: str, chunk_text: str) -> str:
+        """
+        Extract only the small feature-local excerpt needed for description generation.
+
+        Target structure:
+        - heading line with the feature code
+        - one or two continuation lines
+        - optional "Attributes provided" line
+        """
+        lines = chunk_text.split('\n')
+        excerpt_lines = []
+        found_feature_line = False
+
+        for line in lines[:25]:
+            line_stripped = line.strip()
+
+            if not found_feature_line:
+                if f"#{feature_code}" in line or f"(#{feature_code})" in line:
+                    found_feature_line = True
+                    if line_stripped:
+                        excerpt_lines.append(line_stripped)
+                continue
+
+            if not line_stripped:
+                break
+
+            if (line_stripped.startswith('•') or
+                line_stripped.startswith('-') or
+                line_stripped.startswith('*') or
+                line_stripped.lower().startswith('attributes required:') or
+                line_stripped.lower().startswith('minimum required:') or
+                line_stripped.lower().startswith('maximum allowed:') or
+                line_stripped.lower().startswith('os level required:') or
+                line_stripped.lower().startswith('initial order/mes/both/supported:') or
+                line_stripped.lower().startswith('csu:') or
+                line_stripped.lower().startswith('return parts mes:')):
+                break
+
+            excerpt_lines.append(line_stripped)
+
+            if line_stripped.lower().startswith('attributes provided:'):
+                break
+
+            if len(excerpt_lines) >= 3:
+                break
+
+        if not excerpt_lines:
+            return chunk_text[:1000]
+
+        excerpt = '\n'.join(excerpt_lines)
+        return excerpt[:1000]
+
     def _generate_llm_description(self, feature_code: str, raw_text: str) -> Optional[str]:
         """
-        Use Granite LLM to generate a clear, concise description from raw chunk text
+        Use Granite LLM to generate a clear, concise description from a focused feature excerpt
         
         Args:
             feature_code: The feature code (e.g., EDAR, ELCP)
-            raw_text: Raw text from the sales manual chunk (full chunk for better context)
+            raw_text: Raw text from the sales manual chunk
             
         Returns:
             Clean description or None if generation fails
@@ -103,18 +160,18 @@ class ActivationFeatureService:
         if self.llm_calls_made >= self.max_llm_calls:
             logger.warning(f"Skipping LLM description for {feature_code} - max calls ({self.max_llm_calls}) reached")
             return None
+
+        feature_excerpt = self._extract_feature_excerpt(feature_code, raw_text)
         
         try:
-            # Create a focused prompt for Granite LLM
-            # Pass the FULL chunk for better context understanding
-            prompt = f"""Based on the following IBM Power Systems sales manual text about feature code #{feature_code}, provide exactly one short sentence describing what this activation feature is for.
+            prompt = f"""Based on the following IBM Power Systems sales manual excerpt for feature code #{feature_code}, provide exactly one short sentence describing what this activation feature is for.
 
-Sales Manual Text:
-{raw_text}
+Sales Manual Excerpt:
+{feature_excerpt}
 
 Requirements:
 - Return exactly one sentence
-- Maximum 30 words
+- Maximum 25 words
 - State the activation type and capacity/amount
 - Include only the most important restriction if present
 - Do not include the feature code
@@ -122,17 +179,16 @@ Requirements:
 
 Description:"""
 
-            # Call the Granite LLM service with timing
             import time
             start_time = time.time()
-            logger.info(f"Requesting Granite LLM description for {feature_code} (call {self.llm_calls_made + 1}/{self.max_llm_calls})")
+            logger.info(f"Requesting Granite LLM description for {feature_code} (call {self.llm_calls_made + 1}/{self.max_llm_calls}, excerpt_len={len(feature_excerpt)})")
             self.llm_calls_made += 1
             
             response = requests.post(
                 self.llm_url,
                 json={
                     "prompt": prompt,
-                    "max_tokens": 40,
+                    "max_tokens": 32,
                     "temperature": 0.1,
                     "stop": ["\n", "\n\n", "Feature Code:", "Sales Manual", "Description:"]
                 },
@@ -146,14 +202,10 @@ Description:"""
                 result = response.json()
                 description = result.get('choices', [{}])[0].get('text', '').strip()
                 
-                # Clean up the description
                 description = description.replace('\n', ' ')
                 description = re.sub(r'\s+', ' ', description)
-                
-                # Remove any leading/trailing quotes or extra punctuation
                 description = description.strip('"\'.,;: ')
                 
-                # Ensure it's a reasonable length (not too short, not too long)
                 if description and 20 <= len(description) <= 500:
                     logger.info(f"Generated Granite description for {feature_code}: {description[:100]}...")
                     return description
@@ -209,8 +261,10 @@ Description:"""
         Returns:
             ActivationFeature object or None if not an activation feature
         """
+        chunk_text_lower = chunk_text.lower()
+
         # Check if this chunk is about activations
-        if not any(keyword in chunk_text.lower() for keyword in self.ACTIVATION_KEYWORDS):
+        if not any(keyword in chunk_text_lower for keyword in self.ACTIVATION_KEYWORDS):
             return None
         
         # Extract feature code from the beginning (usually in heading)
@@ -221,6 +275,8 @@ Description:"""
         
         feature_code = feature_match.group(1)
         
+        feature_excerpt = self._extract_feature_excerpt(feature_code, chunk_text)
+
         # Try to generate a clean description using LLM first
         llm_description = self._generate_llm_description(feature_code, chunk_text)
         
@@ -231,7 +287,7 @@ Description:"""
             # Find the line containing the feature code and collect description
             # Format: "(#ELME) 512 GB Power Linux Memory Activations for HEX"
             # May continue on next lines until we hit bullets or "Attributes provided"
-            lines = chunk_text.split('\n')
+            lines = feature_excerpt.split('\n')
             description_lines = []
             found_feature_line = False
             
@@ -320,6 +376,11 @@ Description:"""
             chunk_text = chunk.get('text', '')
             metadata = chunk.get('metadata', {})
             
+            feature_match = self.FEATURE_CODE_PATTERN.search(chunk_text[:500])
+            if feature_match and feature_match.group(1) in seen_codes:
+                logger.info(f"Skipping duplicate feature chunk for {feature_match.group(1)} before LLM extraction")
+                continue
+
             feature = self.extract_feature_from_chunk(chunk_text, metadata)
             if feature and feature.feature_code not in seen_codes:
                 features.append(feature)
