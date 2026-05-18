@@ -142,10 +142,13 @@ class ActivationFeatureService:
                 break
 
         if not excerpt_lines:
-            return chunk_text[:1000]
+            # Fallback: use smaller excerpt to avoid long prompts
+            logger.warning(f"Feature {feature_code} not found in expected format, using fallback excerpt")
+            return chunk_text[:300]
 
         excerpt = '\n'.join(excerpt_lines)
-        return excerpt[:1000]
+        # Limit to 500 chars to keep prompts small and fast
+        return excerpt[:500]
 
     def _generate_llm_description(self, feature_code: str, raw_text: str) -> Optional[str]:
         """
@@ -189,6 +192,8 @@ Description:"""
             logger.info(f"Requesting Granite LLM description for {feature_code} (call {self.llm_calls_made + 1}/{self.max_llm_calls}, excerpt_len={len(feature_excerpt)})")
             self.llm_calls_made += 1
             
+            # Use tuple timeout: (connect_timeout, read_timeout)
+            # Granite can take 15-20 seconds per request, so allow 45 seconds
             response = requests.post(
                 self.llm_url,
                 json={
@@ -197,7 +202,7 @@ Description:"""
                     "temperature": 0.1,
                     "stop": ["\n", "\n\n", "Feature Code:", "Sales Manual", "Description:"]
                 },
-                timeout=30
+                timeout=(5, 45)
             )
             
             elapsed_time = time.time() - start_time
