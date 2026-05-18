@@ -50,37 +50,44 @@ export default function ActivationFeaturesView({ features, serverModel }) {
     return (
       <>
         <h5 className="feature-category-title">{title}</h5>
-        {featureList.map((feature) => (
-          <StructuredListRow
-            key={feature.feature_code}
-            onClick={() => setSelectedFeature(feature)}
-            className={`feature-list-row ${
-              selectedFeature?.feature_code === feature.feature_code ? 'selected' : ''
-            }`}
-          >
-            <StructuredListCell>
-              <strong>#{feature.feature_code}</strong>
-            </StructuredListCell>
-            <StructuredListCell>
-              <div className="feature-description">
-                {feature.description.length > 60 
-                  ? feature.description.substring(0, 60) + '...' 
-                  : feature.description}
-              </div>
-            </StructuredListCell>
-            <StructuredListCell>
-              {feature.is_available ? (
-                <Tag type="green" renderIcon={Checkmark}>
-                  Available
-                </Tag>
-              ) : (
-                <Tag type="red" renderIcon={WarningAlt}>
-                  Discontinued
-                </Tag>
-              )}
-            </StructuredListCell>
-          </StructuredListRow>
-        ))}
+        {featureList.map((feature) => {
+          const isSelected = selectedFeature?.feature_code === feature.feature_code;
+          return (
+            <StructuredListRow
+              key={feature.feature_code}
+              className={`feature-list-row ${isSelected ? 'selected' : ''}`}
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  setSelectedFeature(feature);
+                }
+              }}
+            >
+              <StructuredListCell onClick={() => setSelectedFeature(feature)}>
+                <strong>#{feature.feature_code}</strong>
+              </StructuredListCell>
+              <StructuredListCell onClick={() => setSelectedFeature(feature)}>
+                <div className="feature-description">
+                  {feature.description && feature.description.length > 60
+                    ? feature.description.substring(0, 60) + '...'
+                    : feature.description || 'No description'}
+                </div>
+              </StructuredListCell>
+              <StructuredListCell onClick={() => setSelectedFeature(feature)}>
+                {feature.is_available ? (
+                  <Tag type="green" renderIcon={Checkmark}>
+                    Available
+                  </Tag>
+                ) : (
+                  <Tag type="red" renderIcon={WarningAlt}>
+                    Discontinued
+                  </Tag>
+                )}
+              </StructuredListCell>
+            </StructuredListRow>
+          );
+        })}
       </>
     );
   };
@@ -153,9 +160,21 @@ export default function ActivationFeaturesView({ features, serverModel }) {
                 <div className="detail-section">
                   <h5>Sales Manual Content</h5>
                   <div className="chunk-text-container">
-                    <pre className="chunk-text">
-                      {selectedFeature.chunk_text || 'No detailed content available'}
-                    </pre>
+                    {selectedFeature.chunk_text ? (
+                      <pre className="chunk-text">
+                        {selectedFeature.chunk_text}
+                      </pre>
+                    ) : (
+                      <div className="no-content-message">
+                        <p>No detailed content available</p>
+                        <p style={{ fontSize: '0.75rem', color: '#888', marginTop: '0.5rem' }}>
+                          Debug: chunk_text field is {typeof selectedFeature.chunk_text === 'undefined' ? 'undefined' : 'empty'}
+                        </p>
+                        <p style={{ fontSize: '0.75rem', color: '#888' }}>
+                          Available fields: {Object.keys(selectedFeature).join(', ')}
+                        </p>
+                      </div>
+                    )}
                   </div>
                 </div>
 
