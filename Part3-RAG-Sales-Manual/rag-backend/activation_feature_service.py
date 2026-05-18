@@ -274,11 +274,32 @@ Description:"""
         
         # Extract feature code from the beginning (usually in heading)
         # Pattern: (#CODE) Description or #CODE Description
+        # IMPORTANT: Only extract if the title line contains "activation" or "act"
         feature_match = self.FEATURE_CODE_PATTERN.search(chunk_text[:500])
         if not feature_match:
             return None
         
         feature_code = feature_match.group(1)
+        
+        # Get the title line (first line with the feature code)
+        lines = chunk_text.split('\n')
+        title_line = None
+        for line in lines[:10]:  # Check first 10 lines
+            if f'(#{feature_code})' in line or f'#{feature_code}' in line:
+                title_line = line.strip()
+                break
+        
+        # CRITICAL: Only process if title line contains "activation" or "act"
+        # This filters out physical features like processors, memory cards, etc.
+        if title_line:
+            title_lower = title_line.lower()
+            if not ('activation' in title_lower or ' act ' in title_lower or title_lower.endswith(' act')):
+                logger.info(f"Skipping {feature_code} - title line doesn't contain 'activation': {title_line[:100]}")
+                return None
+        else:
+            # If we can't find the title line, skip it to be safe
+            logger.info(f"Skipping {feature_code} - couldn't find title line")
+            return None
         
         feature_excerpt = self._extract_feature_excerpt(feature_code, chunk_text)
 
