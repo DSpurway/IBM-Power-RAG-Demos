@@ -94,10 +94,12 @@ class ActivationFeatureService:
         """
         Extract only the small feature-local excerpt needed for description generation.
 
-        Target structure:
-        - heading line with the feature code
-        - one or two continuation lines
-        - optional "Attributes provided" line
+        Target structure from Sales Manual:
+        1. Title line: "(#CODE) Description"
+        2. Optional second line: "Each occurrence..." or discontinuation notice
+        3. "Attributes provided:" line (useful for LLM context)
+        
+        Stop at "Attributes required:" (not useful for description)
         """
         lines = chunk_text.split('\n')
         excerpt_lines = []
@@ -113,27 +115,29 @@ class ActivationFeatureService:
                         excerpt_lines.append(line_stripped)
                 continue
 
+            # Stop at empty line
             if not line_stripped:
                 break
 
-            if (line_stripped.startswith('•') or
-                line_stripped.startswith('-') or
-                line_stripped.startswith('*') or
-                line_stripped.lower().startswith('attributes required:') or
+            # Stop at "Attributes required" and beyond (not useful)
+            if (line_stripped.lower().startswith('attributes required:') or
                 line_stripped.lower().startswith('minimum required:') or
                 line_stripped.lower().startswith('maximum allowed:') or
                 line_stripped.lower().startswith('os level required:') or
                 line_stripped.lower().startswith('initial order/mes/both/supported:') or
                 line_stripped.lower().startswith('csu:') or
-                line_stripped.lower().startswith('return parts mes:')):
+                line_stripped.lower().startswith('return parts')):
                 break
 
+            # Include "Attributes provided" line (useful for LLM)
             excerpt_lines.append(line_stripped)
 
+            # Stop after "Attributes provided" line
             if line_stripped.lower().startswith('attributes provided:'):
                 break
 
-            if len(excerpt_lines) >= 3:
+            # Limit to reasonable length (title + description + attributes provided)
+            if len(excerpt_lines) >= 4:
                 break
 
         if not excerpt_lines:
@@ -283,59 +287,88 @@ Description:"""
         if llm_description:
             description = llm_description
         else:
-            # Fall back to manual extraction
-            # Find the line containing the feature code and collect description
-            # Format: "(#ELME) 512 GB Power Linux Memory Activations for HEX"
-            # May continue on next lines until we hit bullets or "Attributes provided"
-            lines = feature_excerpt.split('\n')
-            description_lines = []
-            found_feature_line = False
+            # Manual extraction based on Sales Manual structure:
+            # Line 1: "(#EPS2) 1 core Base Proc Act (Pools 2.0) for #EDP4 any OS (from Static)"
+            # Line 2: "Each occurrence of this feature will permanently activate..."
+            # We want just Line 1 (the title) without the feature code prefix
             
-            for i, line in enumerate(lines[:15]):  # Check first 15 lines
+            lines = feature_excerpt.split('\n')
+            description = None
+            
+            # Find the title line with the feature code
+            for line in lines[:5]:  # Check first 5 lines only
                 line_stripped = line.strip()
                 
-                # Skip empty lines before we find the feature
-                if not found_feature_line and not line_stripped:
+                # Skip empty lines and page references
+                if not line_stripped or re.match(r'^\(Part\s+\d+/\d+\)', line_stripped):
                     continue
                 
-                # Found the line with the feature code
-                if not found_feature_line and (f"#{feature_code}" in line or f"(#{feature_code})" in line):
-                    found_feature_line = True
-                    description_lines.append(line_stripped)
-                    continue
-                
-                # After finding feature line, continue collecting description
-                if found_feature_line:
-                    # Stop at bullet points or "Attributes provided" section
-                    if (line_stripped.startswith('•') or
-                        line_stripped.startswith('-') or
-                        line_stripped.startswith('*') or
-                        'attributes provided' in line_stripped.lower() or
-                        line_stripped.startswith('Attributes:') or
-                        not line_stripped):  # Stop at empty line
-                        break
+                # Found the title line with feature code
+                if f"#{feature_code}" in line or f"(#{feature_code})" in line:
+                    # Extract and clean the description
+                    description = line_stripped
                     
-                    # Add continuation lines
-                    description_lines.append(line_stripped)
+                    # Remove the feature code prefix: "(#EPS2) " or "#EPS2 "
+                    description = re.sub(rf'^\(#{feature_code}\)\s*', '', description)
+                    description = re.sub(rf'^#{feature_code}\s*', '', description)
+                    
+                    # Remove any leading/trailing punctuation
+                    description = description.strip(':-., ')
+                    
+                    break
             
-            # Join the description lines
-            description = ' '.join(description_lines)
-            
-            # Remove page references like "(Part 73/690)" or similar patterns
-            description = re.sub(r'\s*\(Part\s+\d+/\d+\)', '', description)
-            description = re.sub(r'\s*\(Page\s+\d+/\d+\)', '', description)
-            description = re.sub(r'\s*\[Part\s+\d+/\d+\]', '', description)
-            description = re.sub(r'\s*\[Page\s+\d+/\d+\]', '', description)
-            
-            # Clean up any double spaces
-            description = re.sub(r'\s+', ' ', description).strip()
-            
-            # If we didn't find a good description, fall back to first non-empty line
+            # If we didn't find a description, try a more lenient search
             if not description:
+                for line in lines[:10]:
+                    line_stripped = line.strip()
+                    if line_stripped and len(line_stripped) > 20:
+                        # Check if it looks like a description (has "activation" or similar)
+                        if any(word in line_stripped.lower() for word in ['activation', 'memory', 'processor', 'core']):
+                            description = line_stripped
+                            # Clean up feature code if present
+                            description = re.sub(rf'^\(#{feature_code}\)\s*', '', description)
+                            description = re.sub(rf'^#{feature_code}\s*', '', description)
+                            break
+            
+            # Final cleanup
+            if description:
+                # Remove page/part references
+                description = re.sub(r'\s*\(Part\s+\d+/\d+\)', '', description)
+                description = re.sub(r'\s*\(Page\s+\d+/\d+\)', '', description)
+                
+                # Remove "Feature Code:" prefix if somehow present
+                description = re.sub(r'^Feature Code:\s*#?[A-Z0-9]{4}\s*Name:\s*', '', description, flags=re.IGNORECASE)
+                
+                # Handle table formatting (pipes)
+                if '|' in description and description.count('|') > 2:
+                    parts = [p.strip() for p in description.split('|') if p.strip()]
+                    for part in parts:
+                        if any(word in part.lower() for word in ['activation', 'memory', 'processor', 'core', 'gb']):
+                            description = part
+                            break
+                
+                # Clean up whitespace
+                description = re.sub(r'\s+', ' ', description).strip()
+                
+                # Truncate if too long (keep it concise)
+                if len(description) > 120:
+                    # Try to break at a natural point
+                    if ' for ' in description:
+                        # Keep everything up to and including "for X"
+                        parts = description.split(' for ')
+                        if len(parts) >= 2:
+                            description = parts[0] + ' for ' + parts[1].split()[0]
+                    elif len(description) > 150:
+                        description = description[:147] + '...'
+            else:
+                # Last resort: use first non-empty line
                 for line in lines:
-                    if line.strip():
+                    if line.strip() and len(line.strip()) > 10:
                         description = line.strip()
                         break
+                
+                if not description:
+                    description = f"Activation feature {feature_code}"
         
         # Check for discontinued date
         discontinued_date = None
