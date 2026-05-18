@@ -745,58 +745,81 @@ export default function SalesManualPage() {
                           </div>
                         ) : (
                           <>
-                            <Layer withBackground>
-                              <Tile className="answer-tile">
-                                <div
-                                  style={{ whiteSpace: 'pre-line' }}
-                                  dangerouslySetInnerHTML={{ __html: queryResults.content || queryResults.answer }}
-                                />
-                              
-                                {/* Show response time for table lookups */}
-                                {queryResults.response_time_ms && (
-                                  <div className="response-time">
-                                    Response time: {queryResults.response_time_ms}ms
-                                  </div>
+                            {/* Display Activation Features with detail view - ONLY for activation queries */}
+                            {queryResults.query_type === 'activation_lookup' && queryResults.features ? (
+                              <>
+                                {/* Display source URL if available */}
+                                {queryResults.source_url && (
+                                  <Tile className="source-tile">
+                                    <h5 className="source-tile__heading">Source:</h5>
+                                    <a
+                                      href={queryResults.source_url}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="source-tile__link"
+                                    >
+                                      {queryResults.source_filename || queryResults.source_url}
+                                    </a>
+                                    <p className="source-tile__helper">
+                                      Click to verify this information in the original IBM Sales Manual
+                                    </p>
+                                  </Tile>
                                 )}
-                              </Tile>
-                            </Layer>
-                            
-                            {/* Display table data if available (for table lookups) */}
-                            {queryResults.table_data && (
-                              <Layer withBackground>
-                                <Tile className="table-tile">
-                                  <h5 className="table-tile__heading">Lifecycle Table from Sales Manual:</h5>
-                                  <pre className="table-tile__content">
-                                    {queryResults.table_data}
-                                  </pre>
-                                </Tile>
-                              </Layer>
-                            )}
-                            
-                            {/* Display source URL if available */}
-                            {queryResults.source_url && (
-                              <Tile className="source-tile">
-                                <h5 className="source-tile__heading">Source:</h5>
-                                <a
-                                  href={queryResults.source_url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="source-tile__link"
-                                >
-                                  {queryResults.source_filename || queryResults.source_url}
-                                </a>
-                                <p className="source-tile__helper">
-                                  Click to verify this information in the original IBM Sales Manual
-                                </p>
-                              </Tile>
-                            )}
-                            
-                            {/* Display Activation Features with detail view */}
-                            {queryResults.query_type === 'activation_lookup' && queryResults.features && (
-                              <ActivationFeaturesView
-                                features={queryResults.features}
-                                serverModel={selectedServer?.model || 'Unknown Server'}
-                              />
+                                
+                                <ActivationFeaturesView
+                                  features={queryResults.features}
+                                  serverModel={selectedServer?.model || 'Unknown Server'}
+                                />
+                              </>
+                            ) : (
+                              <>
+                                {/* Standard answer display for non-activation queries */}
+                                <Layer withBackground>
+                                  <Tile className="answer-tile">
+                                    <div
+                                      style={{ whiteSpace: 'pre-line' }}
+                                      dangerouslySetInnerHTML={{ __html: queryResults.content || queryResults.answer }}
+                                    />
+                                  
+                                    {/* Show response time for table lookups */}
+                                    {queryResults.response_time_ms && (
+                                      <div className="response-time">
+                                        Response time: {queryResults.response_time_ms}ms
+                                      </div>
+                                    )}
+                                  </Tile>
+                                </Layer>
+                                
+                                {/* Display table data if available (for table lookups) */}
+                                {queryResults.table_data && (
+                                  <Layer withBackground>
+                                    <Tile className="table-tile">
+                                      <h5 className="table-tile__heading">Lifecycle Table from Sales Manual:</h5>
+                                      <pre className="table-tile__content">
+                                        {queryResults.table_data}
+                                      </pre>
+                                    </Tile>
+                                  </Layer>
+                                )}
+                                
+                                {/* Display source URL if available */}
+                                {queryResults.source_url && (
+                                  <Tile className="source-tile">
+                                    <h5 className="source-tile__heading">Source:</h5>
+                                    <a
+                                      href={queryResults.source_url}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="source-tile__link"
+                                    >
+                                      {queryResults.source_filename || queryResults.source_url}
+                                    </a>
+                                    <p className="source-tile__helper">
+                                      Click to verify this information in the original IBM Sales Manual
+                                    </p>
+                                  </Tile>
+                                )}
+                              </>
                             )}
                           </>
                         )}
