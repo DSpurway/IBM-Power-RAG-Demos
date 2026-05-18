@@ -15,20 +15,13 @@ export async function POST(request) {
     // Use internal OpenShift service name - no FQDN needed!
     const backendUrl = process.env.RAG_BACKEND_URL || 'http://rag-backend:8080';
     
-    // Set a longer timeout for the fetch (30 seconds)
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 30000);
-    
     const response = await fetch(`${backendUrl}/api/generate`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(body),
-      signal: controller.signal,
     });
-    
-    clearTimeout(timeoutId);
 
     // If streaming is requested, pass through the stream
     if (body.stream) {
