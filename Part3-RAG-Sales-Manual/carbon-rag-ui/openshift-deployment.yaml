@@ -70,6 +70,8 @@ metadata:
   name: carbon-rag-ui
   labels:
     app: carbon-rag-ui
+  annotations:
+    haproxy.router.openshift.io/timeout: 60s
 spec:
   to:
     kind: Service
