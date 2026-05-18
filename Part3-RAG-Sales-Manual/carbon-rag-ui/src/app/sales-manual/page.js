@@ -40,6 +40,7 @@ import {
   TrashCan,
 } from '@carbon/icons-react';
 import React, { useState, useEffect } from 'react';
+import ActivationFeaturesView from '../../components/ActivationFeaturesView';
 
 // IBM Power server configuration - Ordered by processor generation (POWER11, POWER10, POWER9)
 // Within each generation: Enterprise first, then Scale-out, then others (Linux, High-performance, etc.)
@@ -788,6 +789,14 @@ export default function SalesManualPage() {
                                   Click to verify this information in the original IBM Sales Manual
                                 </p>
                               </Tile>
+                            )}
+                            
+                            {/* Display Activation Features with detail view */}
+                            {queryResults.query_type === 'activation_lookup' && queryResults.features && (
+                              <ActivationFeaturesView
+                                features={queryResults.features}
+                                serverModel={selectedServer?.model || 'Unknown Server'}
+                              />
                             )}
                           </>
                         )}

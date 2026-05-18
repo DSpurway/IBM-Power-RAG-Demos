@@ -42,7 +42,8 @@ class ActivationFeature:
             'discontinued_date': self.discontinued_date,
             'is_available': self.is_available,
             'status': self.status,
-            'metadata': self.metadata
+            'metadata': self.metadata,
+            'chunk_text': self.chunk_text  # Full Sales Manual text for detail view
         }
 
 

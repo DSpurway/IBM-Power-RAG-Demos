@@ -83,6 +83,9 @@ spec:
         ports:
         - containerPort: 8080
           protocol: TCP
+        envFrom:
+        - secretRef:
+            name: watson-assistant-env
         env:
         - name: OPENSEARCH_HOST
           value: "opensearch-service"
