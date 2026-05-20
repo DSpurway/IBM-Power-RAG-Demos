@@ -158,17 +158,40 @@ class SalesManualChunker:
         """
         Extract feature codes from structured sections data
         Looks for sections with titles matching (#XXXX) pattern
+        
+        IMPORTANT: Only extracts from actual Feature descriptions section,
+        not from Description or Technical description where feature codes
+        are mentioned inline
         """
         chunks = []
+        
+        # Track if we're in the Features section (after "Feature descriptions" heading)
+        in_features_section = False
         
         for section in sections:
             title = section.get('title', '')
             content = section.get('content', [])
             level = section.get('level', 0)
             
+            # Check if we've entered the Feature descriptions section
+            if 'Feature descriptions' in title or 'Feature description' in title:
+                in_features_section = True
+                continue
+            
+            # Stop if we've left the Features section (hit Accessories, Supplies, etc.)
+            if in_features_section and level <= 2 and not title.startswith('(#'):
+                if any(keyword in title for keyword in ['Accessories', 'Supplies', 'Trademarks', 'Publications']):
+                    in_features_section = False
+                    continue
+            
             # Check if this is a feature code section: (#XXXX) or (#XXXX) - Feature Name
             feature_match = re.match(r'\(#([A-Z0-9]{4})\)\s*-?\s*(.*)', title)
             if not feature_match:
+                continue
+            
+            # ONLY process feature codes if we're in the actual Features section
+            if not in_features_section:
+                logger.debug(f"Skipping feature code {feature_match.group(1)} from non-Features section")
                 continue
             
             feature_code = feature_match.group(1)
@@ -288,12 +311,16 @@ class SalesManualChunker:
     
     def _extract_sections(self, text: str, server_name: str, mtm: str, url: str, common_metadata: Dict) -> List[Dict]:
         """
-        Extract other sections for RAG queries
+        Extract other sections for RAG queries (NOT feature codes)
         These require LLM for synthesis and complex queries
+        
+        Note: Feature codes are extracted separately via structured sections
+        to avoid duplicates and ensure accurate metadata extraction
         """
         chunks = []
         
         # Define section patterns and chunking strategies
+        # NOTE: We do NOT extract feature codes here - they come from structured sections
         sections_config = {
             'Abstract': {'strategy': 'keep_intact', 'priority': 'high'},
             'Highlights': {'strategy': 'split_if_large', 'priority': 'medium'},
@@ -361,11 +388,24 @@ class SalesManualChunker:
         return chunks
     
     def _find_section(self, text: str, section_name: str) -> Optional[str]:
-        """Find a section by name in the text"""
+        """
+        Find a section by name in the text
+        Removes feature code headings to avoid duplicates with structured feature extraction
+        """
         # Pattern: Section name followed by content until next section
         pattern = rf'{re.escape(section_name)}\s*\n+(.*?)(?=\n\n[A-Z][a-z]+\s*\n|\Z)'
         match = re.search(pattern, text, re.DOTALL | re.IGNORECASE)
-        return match.group(1).strip() if match else None
+        
+        if not match:
+            return None
+            
+        section_text = match.group(1).strip()
+        
+        # Remove feature code headings like "(#ECC9) Feature Name" to avoid duplicates
+        # These are already extracted via structured sections with proper metadata
+        section_text = re.sub(r'\(#[A-Z0-9]{4}\)[^\n]*\n', '', section_text)
+        
+        return section_text if section_text else None
     
     def _split_by_subheadings(self, text: str, section_name: str) -> List[tuple]:
         """Split section by H3 subheadings"""
