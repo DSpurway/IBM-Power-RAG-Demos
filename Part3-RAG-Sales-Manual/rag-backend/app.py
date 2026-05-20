@@ -1259,6 +1259,7 @@ def ingest_scraped_content():
         url = data.get('url', 'unknown')
         page_title = data.get('page_title', 'Untitled')
         full_text = data.get('full_text', '')
+        sections = data.get('sections', [])  # Get structured sections
         server_model = data.get('server_model', None)
         mtm = data.get('mtm', None)
         
@@ -1267,6 +1268,7 @@ def ingest_scraped_content():
         
         logger.info(f"Ingesting scraped content from: {url}")
         logger.info(f"Server: {page_title}, MTM: {mtm}, Full text length: {len(full_text)} characters")
+        logger.info(f"Structured sections available: {len(sections)}")
         
         # Create collection name based on MTM
         if mtm:
@@ -1282,12 +1284,13 @@ def ingest_scraped_content():
         # Initialize smart chunker
         chunker = SalesManualChunker(max_chunk_size=1500, overlap=100)
         
-        # Apply smart hierarchical chunking
+        # Apply smart hierarchical chunking with structured sections
         chunks = chunker.chunk_sales_manual(
             full_text=full_text,
             server_name=page_title,
             mtm=mtm or server_model or 'unknown',
-            url=url
+            url=url,
+            sections=sections  # Pass structured sections
         )
         
         logger.info(f"Smart chunking created {len(chunks)} chunks")

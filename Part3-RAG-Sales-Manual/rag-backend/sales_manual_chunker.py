@@ -27,7 +27,7 @@ class SalesManualChunker:
             separators=["\n\n", "\n", ". ", " ", ""]
         )
     
-    def chunk_sales_manual(self, full_text: str, server_name: str, mtm: str, url: str) -> List[Dict[str, Any]]:
+    def chunk_sales_manual(self, full_text: str, server_name: str, mtm: str, url: str, sections: Optional[List[Dict]] = None) -> List[Dict[str, Any]]:
         """
         Main chunking method - processes entire Sales Manual
         
@@ -36,6 +36,7 @@ class SalesManualChunker:
             server_name: Server name (e.g., "IBM Power System S924")
             mtm: Machine Type-Model (e.g., "9009-42A")
             url: Source URL
+            sections: Optional structured sections from scraper (list of dicts with 'title', 'content', 'level')
             
         Returns:
             List of chunks with text and metadata
@@ -61,9 +62,14 @@ class SalesManualChunker:
             logger.info(f"✓ Extracted lifecycle table for {mtm}")
         
         # 2. Extract feature codes with metadata (for metadata search)
-        feature_chunks = self._extract_feature_codes(full_text, server_name, mtm, url, common_metadata)
+        # Use structured sections if available, otherwise fall back to full_text
+        if sections:
+            feature_chunks = self._extract_feature_codes_from_sections(sections, server_name, mtm, url, common_metadata)
+            logger.info(f"✓ Extracted {len(feature_chunks)} feature codes from structured sections for {mtm}")
+        else:
+            feature_chunks = self._extract_feature_codes_fallback(full_text, server_name, mtm, url, common_metadata)
+            logger.info(f"✓ Extracted {len(feature_chunks)} feature codes from full text for {mtm}")
         chunks.extend(feature_chunks)
-        logger.info(f"✓ Extracted {len(feature_chunks)} feature codes for {mtm}")
         
         # 3. Extract other sections for RAG
         section_chunks = self._extract_sections(full_text, server_name, mtm, url, common_metadata)
@@ -148,49 +154,106 @@ class SalesManualChunker:
         
         return '\n'.join(markdown_lines)
     
-    def _extract_feature_codes(self, text: str, server_name: str, mtm: str, url: str, common_metadata: Dict) -> List[Dict]:
+    def _extract_feature_codes_from_sections(self, sections: List[Dict], server_name: str, mtm: str, url: str, common_metadata: Dict) -> List[Dict]:
         """
-        Extract individual feature codes with metadata
-        Enables metadata-based search and filtering
+        Extract feature codes from structured sections data
+        Looks for sections with titles matching (#XXXX) pattern
         """
         chunks = []
         
-        # Pattern for feature codes: (#XXXX) Feature Name
-        # Use non-greedy match with explicit boundaries to avoid catastrophic backtracking
-        feature_pattern = r'\(#([A-Z0-9]{4})\)\s+([^\n]+)\n((?:(?!\(#[A-Z0-9]{4}\)).)*?)(?=\(#[A-Z0-9]{4}\)|\n\n[A-Z][a-z]+\s*\n|\Z)'
-        
-        for match in re.finditer(feature_pattern, text, re.DOTALL):
-            feature_code = match.group(1)
-            feature_name = match.group(2).strip()
-            feature_details = match.group(3).strip()
+        for section in sections:
+            title = section.get('title', '')
+            content = section.get('content', [])
+            level = section.get('level', 0)
+            
+            # Check if this is a feature code section: (#XXXX) or (#XXXX) - Feature Name
+            feature_match = re.match(r'\(#([A-Z0-9]{4})\)\s*-?\s*(.*)', title)
+            if not feature_match:
+                continue
+            
+            feature_code = feature_match.group(1)
+            feature_name = feature_match.group(2).strip() if feature_match.group(2) else ''
+            
+            # Join content paragraphs
+            feature_details = '\n\n'.join(content) if content else ''
+            
+            # Skip if no content
+            if not feature_details:
+                continue
             
             # Extract structured metadata
             metadata = self._parse_feature_metadata(feature_details)
             
-            # Build chunk text
-            chunk_text = f"Feature Code: #{feature_code}\n"
-            chunk_text += f"Name: {feature_name}\n\n"
-            chunk_text += feature_details
+            # Build chunk text with full description
+            chunk_text = f"(#{feature_code}) {feature_name}\n\n{feature_details}"
             
             chunks.append({
                 'text': chunk_text,
                 'metadata': {
                     'section_type': 'feature_code',
-                    'section_title': 'Features',
+                    'section_title': 'Feature descriptions',
                     'feature_code': feature_code,
                     'feature_name': feature_name,
                     'server_name': server_name,
                     'mtm': mtm,
                     'source': url,
                     'priority': 'high',
-                    'query_type': 'metadata_search',  # Can use metadata filtering
-                    'chunk_strategy': 'per_feature_code',
+                    'query_type': 'metadata_search',
+                    'chunk_strategy': 'structured_section',
+                    'section_level': level,
                     **metadata,  # Add parsed metadata (withdrawal_date, csu, etc.)
                     **common_metadata  # Add change detection metadata
                 }
             })
         
+        logger.info(f"Extracted {len(chunks)} feature codes for {mtm}")
         return chunks
+    def _extract_feature_codes_fallback(self, text: str, server_name: str, mtm: str, url: str, common_metadata: Dict) -> List[Dict]:
+        """
+        FALLBACK: Extract feature codes from plain text when structured sections not available
+        This is a simplified fallback - structured sections are preferred
+        """
+        chunks = []
+        logger.warning(f"Using fallback plain text feature extraction for {mtm} - structured sections not available")
+        
+        # Simple pattern matching for feature codes in plain text
+        # Pattern: (#XXXX) followed by text until next (#XXXX) or major section
+        feature_pattern = r'\(#([A-Z0-9]{4})\)\s*-?\s*([^\n]+)(.*?)(?=\(#[A-Z0-9]{4}\)|\n\n[A-Z][a-z]+\s+[a-z]+\s*\n|\Z)'
+        
+        for match in re.finditer(feature_pattern, text, re.DOTALL):
+            feature_code = match.group(1)
+            feature_name = match.group(2).strip()
+            feature_details = match.group(3).strip()
+            
+            if not feature_details:
+                continue
+            
+            # Extract structured metadata
+            metadata = self._parse_feature_metadata(feature_details)
+            
+            # Build chunk text
+            chunk_text = f"(#{feature_code}) {feature_name}\n\n{feature_details}"
+            
+            chunks.append({
+                'text': chunk_text,
+                'metadata': {
+                    'section_type': 'feature_code',
+                    'section_title': 'Feature descriptions',
+                    'feature_code': feature_code,
+                    'feature_name': feature_name,
+                    'server_name': server_name,
+                    'mtm': mtm,
+                    'source': url,
+                    'priority': 'high',
+                    'query_type': 'metadata_search',
+                    'chunk_strategy': 'fallback_plain_text',
+                    **metadata,
+                    **common_metadata
+                }
+            })
+        
+        return chunks
+    
     
     def _parse_feature_metadata(self, details: str) -> Dict[str, Any]:
         """Parse structured metadata from feature details"""
