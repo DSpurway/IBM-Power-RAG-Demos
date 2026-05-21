@@ -159,29 +159,34 @@ class SalesManualChunker:
         Extract feature codes from structured sections data
         Looks for sections with titles matching (#XXXX) pattern
         
-        IMPORTANT: Only extracts from actual Feature descriptions section,
-        not from Description or Technical description where feature codes
-        are mentioned inline
+        IMPORTANT: Only extracts from "Feature descriptions" subsection,
+        ignoring all other sections including "Features - Chargeable",
+        "Feature availability matrix", etc.
         """
         chunks = []
         
-        # Track if we're in the Features section (after "Feature descriptions" heading)
-        in_features_section = False
+        # Track if we're in the Feature descriptions subsection specifically
+        in_feature_descriptions = False
         
         for section in sections:
             title = section.get('title', '')
             content = section.get('content', [])
             level = section.get('level', 0)
             
-            # Check if we've entered the Feature descriptions section
+            # Check if we've entered the "Feature descriptions" subsection
+            # This is the ONLY place we extract feature codes from
             if 'Feature descriptions' in title or 'Feature description' in title:
-                in_features_section = True
+                in_feature_descriptions = True
+                logger.info(f"Entered Feature descriptions section for {mtm}")
                 continue
             
-            # Stop if we've left the Features section (hit Accessories, Supplies, etc.)
-            if in_features_section and level <= 2 and not title.startswith('(#'):
-                if any(keyword in title for keyword in ['Accessories', 'Supplies', 'Trademarks', 'Publications']):
-                    in_features_section = False
+            # Exit Feature descriptions if we hit a new major section at same or higher level
+            # that doesn't start with (#
+            if in_feature_descriptions and level <= 2 and not title.startswith('(#'):
+                # Check if this is a new major section (Accessories, Supplies, etc.)
+                if any(keyword in title for keyword in ['Accessories', 'Supplies', 'Trademarks', 'Publications', 'Specifications']):
+                    in_feature_descriptions = False
+                    logger.info(f"Exited Feature descriptions section at: {title}")
                     continue
             
             # Check if this is a feature code section: (#XXXX) or (#XXXX) - Feature Name
@@ -189,19 +194,26 @@ class SalesManualChunker:
             if not feature_match:
                 continue
             
-            # ONLY process feature codes if we're in the actual Features section
-            if not in_features_section:
-                logger.debug(f"Skipping feature code {feature_match.group(1)} from non-Features section")
+            # ONLY process feature codes if we're in the Feature descriptions subsection
+            if not in_feature_descriptions:
+                logger.debug(f"Skipping feature code {feature_match.group(1)} - not in Feature descriptions section (found in: {title})")
                 continue
             
             feature_code = feature_match.group(1)
             feature_name = feature_match.group(2).strip() if feature_match.group(2) else ''
+            
+            # Skip list items: titles starting with dash like "(#0004) -EMEA Bulk MES Indicator"
+            # These are references in lists, not full descriptions
+            if feature_name.startswith('-'):
+                logger.debug(f"Skipping feature code {feature_code} - list item (starts with dash): {title}")
+                continue
             
             # Join content paragraphs
             feature_details = '\n\n'.join(content) if content else ''
             
             # Skip if no content
             if not feature_details:
+                logger.debug(f"Skipping feature code {feature_code} - no content")
                 continue
             
             # Extract structured metadata
