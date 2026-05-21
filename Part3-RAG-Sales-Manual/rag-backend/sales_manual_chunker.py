@@ -402,8 +402,13 @@ class SalesManualChunker:
     def _find_section(self, text: str, section_name: str) -> Optional[str]:
         """
         Find a section by name in the text
-        Removes feature code headings to avoid duplicates with structured feature extraction
+        Completely skips "Feature descriptions" section to avoid duplicates with structured feature extraction
         """
+        # SKIP "Feature descriptions" section entirely - it's handled by _extract_feature_codes_from_sections
+        if 'Feature description' in section_name:
+            logger.debug(f"Skipping '{section_name}' section - feature codes extracted separately via structured sections")
+            return None
+        
         # Pattern: Section name followed by content until next section
         pattern = rf'{re.escape(section_name)}\s*\n+(.*?)(?=\n\n[A-Z][a-z]+\s*\n|\Z)'
         match = re.search(pattern, text, re.DOTALL | re.IGNORECASE)
@@ -413,7 +418,7 @@ class SalesManualChunker:
             
         section_text = match.group(1).strip()
         
-        # Remove feature code headings like "(#ECC9) Feature Name" to avoid duplicates
+        # Remove any remaining feature code headings like "(#ECC9) Feature Name" to avoid duplicates
         # These are already extracted via structured sections with proper metadata
         section_text = re.sub(r'\(#[A-Z0-9]{4}\)[^\n]*\n', '', section_text)
         
