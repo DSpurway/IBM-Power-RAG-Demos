@@ -23,11 +23,23 @@ spec:
             - containerPort: 8080
               name: http
               protocol: TCP
-          envFrom:
-            # Load Watson Assistant credentials from secret
-            - secretRef:
-                name: watson-assistant-env
           env:
+            # Watson Assistant Configuration
+            - name: WATSON_ASSISTANT_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: watson-assistant-credentials
+                  key: api-key
+            - name: WATSON_ASSISTANT_URL
+              valueFrom:
+                secretKeyRef:
+                  name: watson-assistant-credentials
+                  key: url
+            - name: WATSON_ASSISTANT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: watson-assistant-credentials
+                  key: assistant-id
             # OpenSearch Configuration
             - name: OPENSEARCH_HOST
               value: "opensearch-service"
