@@ -87,7 +87,9 @@ class PhysicalFeatureService:
     
     def __init__(self):
         """Initialize the physical feature service"""
-        pass
+        # Category lookup sets (populated from Features - Chargeable lists)
+        self.processor_codes = set()
+        self.memory_codes = set()
     
     def is_physical_feature_query(self, query: str) -> bool:
         """
@@ -166,12 +168,25 @@ class PhysicalFeatureService:
         
         description = description.strip()
         
-        # Determine feature type
+        # Determine feature type using lookup sets first, then keyword fallback
         feature_type = 'other'
-        if has_processor:
+        
+        # First check lookup sets (most accurate)
+        if feature_code in self.processor_codes:
             feature_type = 'processor'
+            logger.debug(f"Categorized {feature_code} as processor (from lookup set)")
+        elif feature_code in self.memory_codes:
+            feature_type = 'memory'
+            logger.debug(f"Categorized {feature_code} as memory (from lookup set)")
+        # Fallback to keyword matching if not in lookup sets
+        elif has_processor:
+            feature_type = 'processor'
+            logger.debug(f"Categorized {feature_code} as processor (keyword fallback)")
         elif has_memory:
             feature_type = 'memory'
+            logger.debug(f"Categorized {feature_code} as memory (keyword fallback)")
+        else:
+            logger.debug(f"Categorized {feature_code} as other (no match)")
         
         # Check for discontinued date
         discontinued_date = None

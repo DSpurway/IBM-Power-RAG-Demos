@@ -1802,35 +1802,35 @@ def generate():
             # Generate query embedding
             query_vector = embeddings.embed_query(prompt)
             
-            # Search for physical feature chunks (exclude activation keywords)
+            # Search for physical feature chunks from Feature Descriptions
+            # Filter by section_type=feature_code and exclude activation keywords
             search_body = {
-                "size": 20,
+                "size": 100,
                 "_source": ["chunk_id", "text", "metadata"],
                 "query": {
                     "bool": {
                         "must": [
-                            {
-                                "knn": {
-                                    "embedding": {
-                                        "vector": query_vector,
-                                        "k": 20
-                                    }
-                                }
-                            }
+                            {"term": {"metadata.section_type": "feature_code"}}
                         ],
                         "should": [
                             {"match": {"text": "processor"}},
                             {"match": {"text": "memory"}},
                             {"match": {"text": "core"}},
-                            {"match": {"text": "GB"}}
+                            {"match": {"text": "GB"}},
+                            {"match": {"text": "CDIMM"}},
+                            {"match": {"text": "GHz"}}
                         ],
                         "must_not": [
                             {"match": {"text": "activation"}},
-                            {"match": {"text": "activations"}}
+                            {"match": {"text": "activations"}},
+                            {"match": {"text": "act "}}
                         ],
                         "minimum_should_match": 1
                     }
-                }
+                },
+                "sort": [
+                    {"_score": {"order": "desc"}}
+                ]
             }
             
             response = client.search(index=index_name, body=search_body)
@@ -1838,8 +1838,52 @@ def generate():
             
             logger.info(f"Found {len(hits)} potential physical feature chunks")
             
+            # Get processor and memory feature code lists from "Features - Chargeable" section
+            category_lists_query = {
+                "size": 10,
+                "_source": ["text"],
+                "query": {
+                    "bool": {
+                        "must": [
+                            {"term": {"metadata.section_type": "content_section"}},
+                            {"match": {"metadata.section_title": "Features - Chargeable"}}
+                        ],
+                        "should": [
+                            {"match": {"text": "Memory"}},
+                            {"match": {"text": "Processor"}}
+                        ],
+                        "minimum_should_match": 1
+                    }
+                }
+            }
+            
+            category_response = client.search(index=index_name, body=category_lists_query)
+            category_hits = category_response['hits']['hits']
+            
+            # Extract feature codes from the lists
+            import re
+            processor_codes = set()
+            memory_codes = set()
+            
+            for hit in category_hits:
+                text = hit['_source']['text']
+                codes = re.findall(r'\(#([A-Z0-9]{4})\)', text)
+                
+                text_lower = text.lower()
+                if 'processor' in text_lower[:200]:
+                    processor_codes.update(codes)
+                    logger.info(f"Found {len(codes)} processor codes in category list")
+                elif 'memory' in text_lower[:200]:
+                    memory_codes.update(codes)
+                    logger.info(f"Found {len(codes)} memory codes in category list")
+            
+            logger.info(f"Category lists: {len(processor_codes)} processor codes, {len(memory_codes)} memory codes")
+            
             # Extract physical features
             physical_service = PhysicalFeatureService()
+            physical_service.processor_codes = processor_codes
+            physical_service.memory_codes = memory_codes
+            
             chunks = [{'text': hit['_source']['text'], 'metadata': hit['_source'].get('metadata', {})}
                      for hit in hits]
             
