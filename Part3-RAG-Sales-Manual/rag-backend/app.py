@@ -1629,9 +1629,55 @@ def generate():
             
             logger.info(f"Found {len(hits)} potential activation chunks")
             
-            # Extract activation features from chunks
-            # Allow up to 20 LLM calls (2s each = 40s max) for better descriptions
-            activation_service = ActivationFeatureService(use_llm_descriptions=True, max_llm_calls=20)
+            # Get processor and memory feature code lists from "Features - Chargeable" section
+            # These lists help us accurately categorize activation features
+            category_lists_query = {
+                "size": 10,
+                "_source": ["text"],
+                "query": {
+                    "bool": {
+                        "must": [
+                            {"term": {"metadata.section_type": "content_section"}},
+                            {"match": {"metadata.section_title": "Features - Chargeable"}}
+                        ],
+                        "should": [
+                            {"match": {"text": "Memory"}},
+                            {"match": {"text": "Processor"}}
+                        ],
+                        "minimum_should_match": 1
+                    }
+                }
+            }
+            
+            category_response = client.search(index=index_name, body=category_lists_query)
+            category_hits = category_response['hits']['hits']
+            
+            # Extract feature codes from the lists
+            import re
+            processor_codes = set()
+            memory_codes = set()
+            
+            for hit in category_hits:
+                text = hit['_source']['text']
+                # Find all feature codes in format (#CODE)
+                codes = re.findall(r'\(#([A-Z0-9]{4})\)', text)
+                
+                # Determine if this is a processor or memory list
+                text_lower = text.lower()
+                if 'processor' in text_lower[:200]:  # Check first 200 chars for section header
+                    processor_codes.update(codes)
+                    logger.info(f"Found {len(codes)} processor codes in category list")
+                elif 'memory' in text_lower[:200]:
+                    memory_codes.update(codes)
+                    logger.info(f"Found {len(codes)} memory codes in category list")
+            
+            logger.info(f"Category lists: {len(processor_codes)} processor codes, {len(memory_codes)} memory codes")
+            
+            # Extract activation features from chunks (no LLM for speed)
+            activation_service = ActivationFeatureService(use_llm_descriptions=False, max_llm_calls=0)
+            activation_service.processor_codes = processor_codes
+            activation_service.memory_codes = memory_codes
+            
             chunks = [{'text': hit['_source']['text'], 'metadata': hit['_source'].get('metadata', {})}
                      for hit in hits]
             

@@ -90,6 +90,9 @@ class ActivationFeatureService:
         self.max_llm_calls = max_llm_calls
         self.llm_calls_made = 0
         self.llm_url = f"http://{GRANITE_HOST}:{GRANITE_PORT}/v1/completions"
+        # Category lookup sets (populated from Features - Chargeable lists)
+        self.processor_codes = set()
+        self.memory_codes = set()
     
     def _extract_feature_excerpt(self, feature_code: str, chunk_text: str) -> str:
         """
@@ -456,6 +459,7 @@ Description:"""
     def categorize_features(self, features: List[ActivationFeature]) -> Dict[str, List[ActivationFeature]]:
         """
         Categorize features by type (processor, memory, etc.)
+        Uses lookup sets from "Features - Chargeable" lists for accurate classification
         
         Args:
             features: List of ActivationFeature objects
@@ -470,37 +474,45 @@ Description:"""
         }
         
         for feature in features:
-            desc_lower = feature.description.lower()
-            chunk_lower = feature.chunk_text.lower()
-            
-            # Check for processor activations
-            # Look for: "proc act", "processor activation", "core", "cpu"
-            processor_keywords = [
-                'processor activation', 'proc act', 'processor act',
-                'cpu activation', 'core activation',
-                ' proc ', ' core ', ' cpu ',
-                'base proc', 'mobile proc'
-            ]
-            
-            # Check for memory activations
-            # Look for: "memory activation", "mem act", "gb", "ram"
-            memory_keywords = [
-                'memory activation', 'mem act', 'memory act',
-                'ram activation', ' gb ', 'ddr',
-                'base memory', 'mobile memory'
-            ]
-            
-            is_processor = any(keyword in desc_lower or keyword in chunk_lower
-                              for keyword in processor_keywords)
-            is_memory = any(keyword in desc_lower or keyword in chunk_lower
-                           for keyword in memory_keywords)
-            
-            if is_processor:
+            # First try lookup sets (most accurate)
+            if self.processor_codes and feature.feature_code in self.processor_codes:
                 categories['processor'].append(feature)
-            elif is_memory:
+                logger.info(f"Categorized {feature.feature_code} as processor (from lookup set)")
+            elif self.memory_codes and feature.feature_code in self.memory_codes:
                 categories['memory'].append(feature)
+                logger.info(f"Categorized {feature.feature_code} as memory (from lookup set)")
             else:
-                categories['other'].append(feature)
+                # Fallback to keyword matching if not in lookup sets
+                desc_lower = feature.description.lower()
+                chunk_lower = feature.chunk_text.lower()
+                
+                processor_keywords = [
+                    'processor activation', 'proc act', 'processor act',
+                    'cpu activation', 'core activation',
+                    ' proc ', ' core ', ' cpu ',
+                    'base proc', 'mobile proc'
+                ]
+                
+                memory_keywords = [
+                    'memory activation', 'mem act', 'memory act',
+                    'ram activation', ' gb ', 'ddr',
+                    'base memory', 'mobile memory'
+                ]
+                
+                is_processor = any(keyword in desc_lower or keyword in chunk_lower
+                                  for keyword in processor_keywords)
+                is_memory = any(keyword in desc_lower or keyword in chunk_lower
+                               for keyword in memory_keywords)
+                
+                if is_processor:
+                    categories['processor'].append(feature)
+                    logger.info(f"Categorized {feature.feature_code} as processor (from keywords)")
+                elif is_memory:
+                    categories['memory'].append(feature)
+                    logger.info(f"Categorized {feature.feature_code} as memory (from keywords)")
+                else:
+                    categories['other'].append(feature)
+                    logger.info(f"Categorized {feature.feature_code} as other")
         
         return categories
     
