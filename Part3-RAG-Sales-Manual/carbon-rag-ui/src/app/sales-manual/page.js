@@ -768,7 +768,7 @@ export default function SalesManualPage() {
                                 
                                 <ActivationFeaturesView
                                   features={queryResults.features}
-                                  serverModel={selectedServer?.model || 'Unknown Server'}
+                                  serverModel={queryResults.server_model || selectedServer?.model || 'Unknown Server'}
                                 />
                               </>
                             ) : (

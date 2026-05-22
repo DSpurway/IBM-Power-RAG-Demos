@@ -470,11 +470,31 @@ Description:"""
             desc_lower = feature.description.lower()
             chunk_lower = feature.chunk_text.lower()
             
-            if any(word in desc_lower or word in chunk_lower 
-                   for word in ['processor', 'cpu', 'core', 'proc']):
+            # Check for processor activations
+            # Look for: "proc act", "processor activation", "core", "cpu"
+            processor_keywords = [
+                'processor activation', 'proc act', 'processor act',
+                'cpu activation', 'core activation',
+                ' proc ', ' core ', ' cpu ',
+                'base proc', 'mobile proc'
+            ]
+            
+            # Check for memory activations
+            # Look for: "memory activation", "mem act", "gb", "ram"
+            memory_keywords = [
+                'memory activation', 'mem act', 'memory act',
+                'ram activation', ' gb ', 'ddr',
+                'base memory', 'mobile memory'
+            ]
+            
+            is_processor = any(keyword in desc_lower or keyword in chunk_lower
+                              for keyword in processor_keywords)
+            is_memory = any(keyword in desc_lower or keyword in chunk_lower
+                           for keyword in memory_keywords)
+            
+            if is_processor:
                 categories['processor'].append(feature)
-            elif any(word in desc_lower or word in chunk_lower 
-                     for word in ['memory', 'ram', 'ddr']):
+            elif is_memory:
                 categories['memory'].append(feature)
             else:
                 categories['other'].append(feature)

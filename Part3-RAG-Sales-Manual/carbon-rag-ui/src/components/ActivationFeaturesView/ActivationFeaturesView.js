@@ -125,7 +125,7 @@ export default function ActivationFeaturesView({ features, serverModel }) {
               <StructuredListBody>
                 {renderFeatureList(processorFeatures, 'Processor Activations')}
                 {renderFeatureList(memoryFeatures, 'Memory Activations')}
-                {renderFeatureList(otherFeatures, 'Other Activations')}
+                {/* Hide "Other Activations" - only show processor and memory */}
               </StructuredListBody>
             </StructuredListWrapper>
           </Tile>
