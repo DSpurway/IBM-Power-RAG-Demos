@@ -12,9 +12,9 @@ import {
   Tag,
 } from '@carbon/react';
 import { Checkmark, WarningAlt } from '@carbon/icons-react';
-import './ActivationFeaturesView.scss';
+import './FeaturesView.scss';
 
-export default function ActivationFeaturesView({ features, serverModel }) {
+export default function FeaturesView({ features, serverModel }) {
   const [selectedFeature, setSelectedFeature] = useState(
     features && features.length > 0 ? features[0] : null
   );
@@ -93,10 +93,10 @@ export default function ActivationFeaturesView({ features, serverModel }) {
   };
 
   return (
-    <div className="activation-features-container">
+    <div className="features-container">
       <Grid fullWidth>
         <Column lg={16}>
-          <h3>Activation Features for {serverModel}</h3>
+          <h3>Features for {serverModel}</h3>
           <p className="feature-summary">
             Found {processorFeatures.length + memoryFeatures.length} activation feature(s): {' '}
             {[...processorFeatures, ...memoryFeatures].filter(f => f.is_available).length} available, {' '}

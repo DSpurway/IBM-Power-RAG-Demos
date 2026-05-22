@@ -40,7 +40,7 @@ import {
   TrashCan,
 } from '@carbon/icons-react';
 import React, { useState, useEffect } from 'react';
-import ActivationFeaturesView from '../../components/ActivationFeaturesView';
+import FeaturesView from '../../components/FeaturesView';
 
 // IBM Power server configuration - Ordered by processor generation (POWER11, POWER10, POWER9)
 // Within each generation: Enterprise first, then Scale-out, then others (Linux, High-performance, etc.)
@@ -745,8 +745,8 @@ export default function SalesManualPage() {
                           </div>
                         ) : (
                           <>
-                            {/* Display Activation Features with detail view - ONLY for activation queries */}
-                            {queryResults.query_type === 'activation_lookup' && queryResults.features ? (
+                            {/* Display Features with detail view - for both activation and physical feature queries */}
+                            {(queryResults.query_type === 'activation_lookup' || queryResults.query_type === 'physical_feature_lookup') && queryResults.features ? (
                               <>
                                 {/* Display source URL if available */}
                                 {queryResults.source_url && (
@@ -766,7 +766,7 @@ export default function SalesManualPage() {
                                   </Tile>
                                 )}
                                 
-                                <ActivationFeaturesView
+                                <FeaturesView
                                   features={queryResults.features}
                                   serverModel={queryResults.server_model || selectedServer?.model || 'Unknown Server'}
                                 />
