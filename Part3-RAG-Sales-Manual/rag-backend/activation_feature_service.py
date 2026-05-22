@@ -189,7 +189,8 @@ Description:"""
 
             import time
             start_time = time.time()
-            logger.info(f"Requesting Granite LLM description for {feature_code} (call {self.llm_calls_made + 1}/{self.max_llm_calls}, excerpt_len={len(feature_excerpt)})")
+            logger.info(f"=== Granite LLM Call {self.llm_calls_made + 1}/{self.max_llm_calls} for {feature_code} ===")
+            logger.info(f"INPUT EXCERPT ({len(feature_excerpt)} chars):\n{feature_excerpt}")
             self.llm_calls_made += 1
             
             # Use tuple timeout: (connect_timeout, read_timeout)
@@ -206,7 +207,6 @@ Description:"""
             )
             
             elapsed_time = time.time() - start_time
-            logger.info(f"Granite LLM response received in {elapsed_time:.2f} seconds")
             
             if response.status_code == 200:
                 result = response.json()
@@ -216,11 +216,14 @@ Description:"""
                 description = re.sub(r'\s+', ' ', description)
                 description = description.strip('"\'.,;: ')
                 
+                logger.info(f"Granite response received in {elapsed_time:.2f}s")
+                logger.info(f"OUTPUT DESCRIPTION ({len(description)} chars): {description}")
+                
                 if description and 20 <= len(description) <= 500:
-                    logger.info(f"Generated Granite description for {feature_code}: {description[:100]}...")
+                    logger.info(f"✓ Granite description accepted for {feature_code}")
                     return description
                 else:
-                    logger.warning(f"Granite description length invalid for {feature_code}: {len(description)} chars")
+                    logger.warning(f"✗ Granite description rejected for {feature_code} - length {len(description)} chars (need 20-500)")
                     return None
             else:
                 logger.warning(f"Granite LLM request failed with status {response.status_code}")
