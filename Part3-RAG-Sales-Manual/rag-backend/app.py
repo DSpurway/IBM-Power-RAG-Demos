@@ -1597,8 +1597,10 @@ def generate():
             query_vector = embeddings.embed_query(prompt)
             
             # Search for activation-related chunks
+            # CRITICAL: Filter by section_type=feature_code to get structured feature descriptions
+            # This avoids pulling from summary tables in "Highlights" or "Models" sections
             search_body = {
-                "size": 20,
+                "size": 50,  # Increased from 20 to get more feature codes
                 "_source": ["chunk_id", "text", "metadata"],
                 "query": {
                     "bool": {
@@ -1607,10 +1609,12 @@ def generate():
                                 "knn": {
                                     "embedding": {
                                         "vector": query_vector,
-                                        "k": 20
+                                        "k": 50  # Increased from 20
                                     }
                                 }
-                            }
+                            },
+                            # MUST be a feature_code section (from Feature Descriptions)
+                            {"term": {"metadata.section_type.keyword": "feature_code"}}
                         ],
                         "should": [
                             {"match": {"text": "activation"}},
