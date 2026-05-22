@@ -1600,31 +1600,28 @@ def generate():
             # CRITICAL: Filter by section_type=feature_code to get structured feature descriptions
             # This avoids pulling from summary tables in "Highlights" or "Models" sections
             search_body = {
-                "size": 50,  # Increased from 20 to get more feature codes
+                "size": 100,  # Increased to get all activation features
                 "_source": ["chunk_id", "text", "metadata"],
                 "query": {
                     "bool": {
                         "must": [
-                            {
-                                "knn": {
-                                    "embedding": {
-                                        "vector": query_vector,
-                                        "k": 50  # Increased from 20
-                                    }
-                                }
-                            },
                             # MUST be a feature_code section (from Feature Descriptions)
-                            {"term": {"metadata.section_type.keyword": "feature_code"}}
+                            {"term": {"metadata.section_type": "feature_code"}}
                         ],
                         "should": [
                             {"match": {"text": "activation"}},
                             {"match": {"text": "activations"}},
                             {"match": {"text": "memory activation"}},
-                            {"match": {"text": "processor activation"}}
+                            {"match": {"text": "processor activation"}},
+                            {"match": {"text": "proc act"}},
+                            {"match": {"text": "mem act"}}
                         ],
                         "minimum_should_match": 1
                     }
-                }
+                },
+                "sort": [
+                    {"_score": {"order": "desc"}}
+                ]
             }
             
             response = client.search(index=index_name, body=search_body)
@@ -1633,8 +1630,8 @@ def generate():
             logger.info(f"Found {len(hits)} potential activation chunks")
             
             # Extract activation features from chunks
-            # Limit Granite generation to a single feature description per request
-            activation_service = ActivationFeatureService(use_llm_descriptions=True, max_llm_calls=1)
+            # Allow up to 20 LLM calls (2s each = 40s max) for better descriptions
+            activation_service = ActivationFeatureService(use_llm_descriptions=True, max_llm_calls=20)
             chunks = [{'text': hit['_source']['text'], 'metadata': hit['_source'].get('metadata', {})}
                      for hit in hits]
             

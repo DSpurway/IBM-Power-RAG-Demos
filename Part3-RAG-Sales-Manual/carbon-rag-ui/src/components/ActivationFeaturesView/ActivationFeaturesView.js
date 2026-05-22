@@ -98,9 +98,9 @@ export default function ActivationFeaturesView({ features, serverModel }) {
         <Column lg={16}>
           <h3>Activation Features for {serverModel}</h3>
           <p className="feature-summary">
-            Found {features.length} activation feature(s): {' '}
-            {features.filter(f => f.is_available).length} available, {' '}
-            {features.filter(f => !f.is_available).length} discontinued
+            Found {processorFeatures.length + memoryFeatures.length} activation feature(s): {' '}
+            {[...processorFeatures, ...memoryFeatures].filter(f => f.is_available).length} available, {' '}
+            {[...processorFeatures, ...memoryFeatures].filter(f => !f.is_available).length} discontinued
           </p>
         </Column>
       </Grid>
