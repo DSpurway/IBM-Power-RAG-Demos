@@ -2145,10 +2145,10 @@ def ingest_sales_manual():
         
         # Check if bulk ingestion is complete
         if bulk_ingestion_state['in_progress']:
-            total_processed = len(bulk_ingestion_state['completed']) + len(bulk_ingestion_state['failed'])
+            total_processed = len(bulk_ingestion_state['completed']) + len(bulk_ingestion_state.get('skipped', [])) + len(bulk_ingestion_state['failed'])
             if total_processed >= bulk_ingestion_state['total']:
                 bulk_ingestion_state['in_progress'] = False
-                logger.info(f"Bulk ingestion complete: {len(bulk_ingestion_state['completed'])} succeeded, {len(bulk_ingestion_state['failed'])} failed")
+                logger.info(f"Bulk ingestion complete: {len(bulk_ingestion_state['completed'])} succeeded, {len(bulk_ingestion_state.get('skipped', []))} skipped, {len(bulk_ingestion_state['failed'])} failed")
 
 
 @app.route('/api/bulk-ingestion-status', methods=['GET'])
@@ -2162,13 +2162,16 @@ def bulk_ingestion_status():
             'in_progress': bulk_ingestion_state['in_progress'],
             'current_server': bulk_ingestion_state['current_server'],
             'completed': bulk_ingestion_state['completed'],
+            'skipped': bulk_ingestion_state.get('skipped', []),
             'failed': bulk_ingestion_state['failed'],
             'total': bulk_ingestion_state['total'],
             'completed_count': len(bulk_ingestion_state['completed']),
+            'skipped_count': len(bulk_ingestion_state.get('skipped', [])),
             'failed_count': len(bulk_ingestion_state['failed']),
-            'started_at': bulk_ingestion_state['started_at']
+            'started_at': bulk_ingestion_state['started_at'],
+            'force_reingest': bulk_ingestion_state.get('force_reingest', False)
         }
-        logger.info(f"[Bulk Ingestion Status] in_progress={status['in_progress']}, current={status['current_server']}, completed={status['completed_count']}/{status['total']}")
+        logger.info(f"[Bulk Ingestion Status] in_progress={status['in_progress']}, current={status['current_server']}, completed={status['completed_count']}, skipped={status['skipped_count']}, total={status['total']}")
         return jsonify(status)
     except Exception as e:
         logger.error(f"Error getting bulk ingestion status: {e}")
@@ -2206,8 +2209,16 @@ def start_bulk_ingestion():
     Start bulk ingestion of all servers in a background thread
     Returns immediately and processes servers asynchronously
     Uses MTM (Machine Type-Model) as unique identifier
+    
+    Supports intelligent skip logic:
+    - Checks if collection exists with documents
+    - Compares content hash to detect source changes
+    - Skips unchanged collections (unless force=true)
     """
     try:
+        data = request.get_json() or {}
+        force_reingest = data.get('force', False)  # Force re-ingestion of all servers
+        
         # Check if bulk ingestion is already in progress
         if bulk_ingestion_state['in_progress']:
             logger.warning("[Bulk Ingestion] Already in progress, rejecting new request")
@@ -2258,15 +2269,110 @@ def start_bulk_ingestion():
         bulk_ingestion_state['current_server'] = None
         bulk_ingestion_state['completed'] = []
         bulk_ingestion_state['failed'] = []
+        bulk_ingestion_state['skipped'] = []
         bulk_ingestion_state['total'] = len(servers)
         bulk_ingestion_state['started_at'] = datetime.now().isoformat()
+        bulk_ingestion_state['force_reingest'] = force_reingest
+        
+        # Helper function to check if collection needs re-ingestion
+        def should_reingest(server):
+            """Check if server collection needs re-ingestion based on content hash"""
+            if force_reingest:
+                logger.info(f"[Bulk Ingestion] Force re-ingest enabled for {server['mtm']}")
+                return True, "forced"
+            
+            try:
+                # Generate collection name and index name
+                from server_mtm_mapper import get_collection_name_for_mtm
+                collection_name = get_collection_name_for_mtm(server['mtm'])
+                if not collection_name:
+                    return True, "no_collection_mapping"
+                
+                # Generate index name using MD5 hash
+                import hashlib
+                hash_part = hashlib.md5(collection_name.encode()).hexdigest()
+                index_name = f"rag_{hash_part}"
+                
+                # Check if index exists
+                client = get_opensearch_client()
+                if not client.indices.exists(index=index_name):
+                    logger.info(f"[Bulk Ingestion] Index {index_name} doesn't exist for {server['mtm']}")
+                    return True, "index_missing"
+                
+                # Get document count
+                count_response = client.count(index=index_name)
+                doc_count = count_response.get('count', 0)
+                
+                if doc_count == 0:
+                    logger.info(f"[Bulk Ingestion] Index {index_name} is empty for {server['mtm']}")
+                    return True, "index_empty"
+                
+                # Get a sample document to check content hash
+                search_response = client.search(
+                    index=index_name,
+                    body={
+                        "size": 1,
+                        "query": {"match_all": {}},
+                        "_source": ["content_hash", "ingestion_timestamp"]
+                    }
+                )
+                
+                if search_response['hits']['total']['value'] == 0:
+                    return True, "no_documents"
+                
+                existing_doc = search_response['hits']['hits'][0]['_source']
+                existing_hash = existing_doc.get('content_hash')
+                
+                if not existing_hash:
+                    logger.info(f"[Bulk Ingestion] No content hash found for {server['mtm']}, will re-ingest")
+                    return True, "no_hash"
+                
+                # Scrape current content to get new hash (lightweight check)
+                scraper_url = os.environ.get('SCRAPER_URL', 'http://host.docker.internal:5000')
+                scraper_response = requests.get(
+                    f"{scraper_url}/scrape",
+                    params={'url': server['url'], 'wait': 10},
+                    timeout=120
+                )
+                
+                if scraper_response.status_code != 200:
+                    logger.warning(f"[Bulk Ingestion] Scraper failed for {server['mtm']}, will re-ingest")
+                    return True, "scraper_error"
+                
+                scraper_data = scraper_response.json()
+                new_text = scraper_data.get('full_text', '')
+                new_hash = hashlib.sha256(new_text.encode('utf-8')).hexdigest()
+                
+                if existing_hash == new_hash:
+                    logger.info(f"[Bulk Ingestion] ⏭️  {server['mtm']} unchanged (hash: {existing_hash[:8]}...), skipping")
+                    return False, "unchanged"
+                else:
+                    logger.info(f"[Bulk Ingestion] 🔄 {server['mtm']} content changed (old: {existing_hash[:8]}..., new: {new_hash[:8]}...), will re-ingest")
+                    return True, "content_changed"
+                    
+            except Exception as e:
+                logger.warning(f"[Bulk Ingestion] Error checking {server['mtm']}: {e}, will re-ingest")
+                return True, "check_error"
         
         # Start background thread to process servers
         def process_servers():
             for server in servers:
                 try:
                     bulk_ingestion_state['current_server'] = f"{server['model']} ({server['mtm']})"
-                    logger.info(f"[Bulk Ingestion] Processing MTM {server['mtm']} - {server['model']}")
+                    
+                    # Check if re-ingestion is needed
+                    needs_reingest, reason = should_reingest(server)
+                    
+                    if not needs_reingest:
+                        bulk_ingestion_state['skipped'].append({
+                            'mtm': server['mtm'],
+                            'model': server['model'],
+                            'reason': reason
+                        })
+                        logger.info(f"[Bulk Ingestion] ⏭️  Skipped {server['model']} ({server['mtm']})")
+                        continue
+                    
+                    logger.info(f"[Bulk Ingestion] Processing MTM {server['mtm']} - {server['model']} (reason: {reason})")
                     
                     # Call the ingest-sales-manual endpoint internally with MTM-based parameters
                     with app.test_request_context(
@@ -2301,19 +2407,20 @@ def start_bulk_ingestion():
             # Mark as complete
             bulk_ingestion_state['in_progress'] = False
             bulk_ingestion_state['current_server'] = None
-            logger.info(f"[Bulk Ingestion] Complete: {len(bulk_ingestion_state['completed'])} succeeded, {len(bulk_ingestion_state['failed'])} failed")
+            logger.info(f"[Bulk Ingestion] Complete: {len(bulk_ingestion_state['completed'])} succeeded, {len(bulk_ingestion_state['skipped'])} skipped, {len(bulk_ingestion_state['failed'])} failed")
         
         # Start thread
         import threading
         thread = threading.Thread(target=process_servers, daemon=True)
         thread.start()
         
-        logger.info(f"Started bulk ingestion of {len(servers)} servers in background thread")
+        logger.info(f"Started bulk ingestion of {len(servers)} servers in background thread (force={force_reingest})")
         
         return jsonify({
             'success': True,
-            'message': f'Bulk ingestion started for {len(servers)} servers',
-            'total': len(servers)
+            'message': f'Bulk ingestion started for {len(servers)} servers (force={force_reingest})',
+            'total': len(servers),
+            'force_reingest': force_reingest
         })
         
     except Exception as e:

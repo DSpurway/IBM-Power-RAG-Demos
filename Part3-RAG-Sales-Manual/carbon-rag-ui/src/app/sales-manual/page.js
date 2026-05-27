@@ -126,7 +126,11 @@ export default function SalesManualPage() {
         setBulkIngestionInProgress(true);
         setBulkIngestionStatus(status);
         setBulkIngestionStarted(true);
-        setError(`Bulk ingestion in progress: ${status.completed_count} of ${status.total} completed`);
+        const skippedCount = status.skipped_count || 0;
+        const progressMsg = skippedCount > 0
+          ? `Bulk ingestion in progress: ${status.completed_count} completed, ${skippedCount} skipped (unchanged), ${status.total - status.completed_count - skippedCount - status.failed_count} remaining`
+          : `Bulk ingestion in progress: ${status.completed_count} of ${status.total} completed`;
+        setError(progressMsg);
         
         // Start polling
         setTimeout(pollBulkIngestionStatus, 2000);
@@ -238,8 +242,11 @@ export default function SalesManualPage() {
         setLoading(false);
         
         // Show completion message
+        const skippedCount = status.skipped_count || 0;
         if (status.failed_count > 0) {
-          setError(`Bulk ingestion completed with errors. ${status.completed_count} succeeded, ${status.failed_count} failed.`);
+          setError(`Bulk ingestion completed with errors. ${status.completed_count} succeeded, ${skippedCount} skipped (unchanged), ${status.failed_count} failed.`);
+        } else if (skippedCount > 0) {
+          setError(`Bulk ingestion completed! ${status.completed_count} re-ingested, ${skippedCount} skipped (unchanged).`);
         } else {
           setError(`Bulk ingestion completed successfully! All ${status.completed_count} servers indexed.`);
         }
@@ -283,9 +290,11 @@ export default function SalesManualPage() {
         in_progress: true,
         current_server: 'Initializing...',
         completed: [],
+        skipped: [],
         failed: [],
         total: data.total || 26,
         completed_count: 0,
+        skipped_count: 0,
         failed_count: 0,
         started_at: new Date().toISOString()
       });
@@ -523,14 +532,16 @@ export default function SalesManualPage() {
                             <strong>Current Server:</strong> {bulkIngestionStatus.current_server || 'Starting...'}
                           </p>
                           <p className="progress-tile__text">
-                            <strong>Progress:</strong> {bulkIngestionStatus.completed_count} of {bulkIngestionStatus.total} completed
-                            {bulkIngestionStatus.failed_count > 0 && ` (${bulkIngestionStatus.failed_count} failed)`}
+                            <strong>Progress:</strong> {bulkIngestionStatus.completed_count} completed
+                            {bulkIngestionStatus.skipped_count > 0 && `, ${bulkIngestionStatus.skipped_count} skipped`}
+                            {bulkIngestionStatus.failed_count > 0 && `, ${bulkIngestionStatus.failed_count} failed`}
+                            {' '}of {bulkIngestionStatus.total}
                           </p>
                           <ProgressBar
                             label="Ingestion Progress"
-                            value={bulkIngestionStatus.completed_count}
+                            value={bulkIngestionStatus.completed_count + (bulkIngestionStatus.skipped_count || 0)}
                             max={bulkIngestionStatus.total}
-                            helperText={`${Math.round((bulkIngestionStatus.completed_count / bulkIngestionStatus.total) * 100)}% complete`}
+                            helperText={`${Math.round(((bulkIngestionStatus.completed_count + (bulkIngestionStatus.skipped_count || 0)) / bulkIngestionStatus.total) * 100)}% complete`}
                           />
                           {bulkIngestionStatus.completed && bulkIngestionStatus.completed.length > 0 && (
                             <details className="progress-details">
@@ -539,6 +550,16 @@ export default function SalesManualPage() {
                               </summary>
                               <div className="progress-details__content">
                                 {bulkIngestionStatus.completed.join(', ')}
+                              </div>
+                            </details>
+                          )}
+                          {bulkIngestionStatus.skipped && bulkIngestionStatus.skipped.length > 0 && (
+                            <details className="progress-details">
+                              <summary className="progress-details__summary" style={{color: '#0f62fe'}}>
+                                Skipped Servers ({bulkIngestionStatus.skipped.length}) - Content Unchanged
+                              </summary>
+                              <div className="progress-details__content">
+                                {bulkIngestionStatus.skipped.map(s => s.mtm || s).join(', ')}
                               </div>
                             </details>
                           )}
