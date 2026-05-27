@@ -2283,16 +2283,14 @@ def start_bulk_ingestion():
                 return True, "forced"
             
             try:
-                # Generate collection name and index name
+                # Generate collection name and use it directly as index name
                 from server_mtm_mapper import get_collection_name_for_mtm
                 collection_name = get_collection_name_for_mtm(server['mtm'])
                 if not collection_name:
                     return True, "no_collection_mapping"
                 
-                # Generate index name using MD5 hash
-                import hashlib
-                hash_part = hashlib.md5(collection_name.encode()).hexdigest()
-                index_name = f"rag_{hash_part}"
+                # Use collection name directly as index name (no MD5 hashing)
+                index_name = collection_name
                 
                 # Check if index exists
                 client = get_opensearch_client()
@@ -2314,7 +2312,7 @@ def start_bulk_ingestion():
                     body={
                         "size": 1,
                         "query": {"match_all": {}},
-                        "_source": ["content_hash", "ingestion_timestamp"]
+                        "_source": ["metadata.content_hash", "metadata.ingestion_timestamp", "content_hash", "ingestion_timestamp"]
                     }
                 )
                 
@@ -2322,7 +2320,8 @@ def start_bulk_ingestion():
                     return True, "no_documents"
                 
                 existing_doc = search_response['hits']['hits'][0]['_source']
-                existing_hash = existing_doc.get('content_hash')
+                # Try both nested and flat structure
+                existing_hash = existing_doc.get('content_hash') or existing_doc.get('metadata', {}).get('content_hash')
                 
                 if not existing_hash:
                     logger.info(f"[Bulk Ingestion] No content hash found for {server['mtm']}, will re-ingest")
@@ -2394,15 +2393,14 @@ def start_bulk_ingestion():
                             response_data = response
                             status_code = 200
                         
+                        # Note: completed/failed tracking is done in ingest_sales_manual()
+                        # which appends the MTM (not model name) to avoid double-counting
                         if status_code == 200:
-                            bulk_ingestion_state['completed'].append(server['model'])
                             logger.info(f"[Bulk Ingestion] ✓ {server['model']} completed")
                         else:
-                            bulk_ingestion_state['failed'].append(server['model'])
                             logger.error(f"[Bulk Ingestion] ✗ {server['model']} failed")
                             
                 except Exception as e:
-                    bulk_ingestion_state['failed'].append(server['model'])
                     logger.error(f"[Bulk Ingestion] Error processing {server['model']}: {e}")
             
             # Mark as complete

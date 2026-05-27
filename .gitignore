@@ -167,4 +167,8 @@ watson_response_*.json
 commit-and-deploy.ps1
 
 # Test scripts that may contain credentials
+
+# Watson Assistant credentials (contains API keys)
+watson-assistant-credentials.yaml
+**/watson-assistant-credentials.yaml
 test-watson.ps1

@@ -15,9 +15,12 @@ logger = logging.getLogger(__name__)
 
 
 def _generate_index_name(collection_name):
-    """Generate OpenSearch index name from collection name"""
-    hash_part = hashlib.md5(collection_name.encode()).hexdigest()
-    return f"rag_{hash_part}"
+    """
+    Generate OpenSearch index name from collection name
+    Uses the collection name directly for readability and easier debugging
+    Example: rag_mtm_9009_42a -> rag_mtm_9009_42a
+    """
+    return collection_name
 
 
 class TableLookupService:
