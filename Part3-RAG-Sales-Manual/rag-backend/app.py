@@ -2216,7 +2216,8 @@ def start_bulk_ingestion():
     - Skips unchanged collections (unless force=true)
     """
     try:
-        data = request.get_json() or {}
+        # Handle empty body gracefully (frontend sends POST with no body)
+        data = request.get_json(silent=True) or {}
         force_reingest = data.get('force', False)  # Force re-ingestion of all servers
         
         # Check if bulk ingestion is already in progress
