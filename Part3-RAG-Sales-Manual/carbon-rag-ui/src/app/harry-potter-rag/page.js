@@ -22,6 +22,8 @@ import {
   StructuredListRow,
   StructuredListCell,
   StructuredListBody,
+  AILabel,
+  AILabelContent,
 } from '@carbon/react';
 import {
   DataStorage,
@@ -538,7 +540,17 @@ Mr. Dursley was the director of a firm called Grunnings, which made drills. He w
                     {part1Answer && (
                       <div className="ai-response">
                         <Tile style={{ marginTop: '1rem', backgroundColor: '#e0e0e0' }}>
-                          <h4>AI Response (TinyLlama):</h4>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
+                            <h4 style={{ margin: 0 }}>AI Response (TinyLlama)</h4>
+                            <AILabel size="sm">
+                              <AILabelContent>
+                                <div>
+                                  <p className="ai-label-heading">AI Generated</p>
+                                  <p className="ai-label-text">Response from TinyLlama without RAG context</p>
+                                </div>
+                              </AILabelContent>
+                            </AILabel>
+                          </div>
                           <p style={{ marginTop: '1rem', whiteSpace: 'pre-wrap' }}>{part1Answer}</p>
                         </Tile>
                         <InlineNotification
@@ -930,23 +942,30 @@ Mr. Dursley was the director of a firm called Grunnings, which made drills. He w
                         The LLM has processed the prompt and generated an answer based on the retrieved context.
                       </p>
                       
-                      <div className="ai-response ai-response--rag">
-                        <div className="ai-response__header">
-                          <Bot size={20} className="ai-response__icon" />
-                          <h4 className="ai-response__title">AI Response with RAG (TinyLlama)</h4>
+                      <Tile style={{ marginTop: '1rem', backgroundColor: '#e0e0e0' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
+                          <h4 style={{ margin: 0 }}>AI Response with RAG (TinyLlama)</h4>
+                          <AILabel size="sm">
+                            <AILabelContent>
+                              <div>
+                                <p className="ai-label-heading">AI Generated with RAG</p>
+                                <p className="ai-label-text">Response enhanced with context from Harry Potter book</p>
+                              </div>
+                            </AILabelContent>
+                          </AILabel>
                         </div>
-                        <div className="ai-response__content">
+                        <p style={{ marginTop: '1rem', whiteSpace: 'pre-wrap' }}>
                           {part2Answer || 'Generating...'}
-                        </div>
+                        </p>
                         <InlineNotification
                           kind="success"
                           lowContrast
                           subtitle="This response is generated using RAG with context from the Harry Potter book."
                           title="Context-aware response"
                           hideCloseButton
-                          className="section-spacing"
+                          style={{ marginTop: '1rem' }}
                         />
-                      </div>
+                      </Tile>
                       
                       <div style={{
                         marginTop: '20px',
