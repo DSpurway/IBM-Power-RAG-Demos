@@ -710,7 +710,6 @@ export default function SalesManualPage() {
                     {queryResults && (
                       <div className="answer-section">
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
-                          <h4 style={{ margin: 0 }}>Answer</h4>
                           <AILabel size="sm">
                             <AILabelContent>
                               <div>

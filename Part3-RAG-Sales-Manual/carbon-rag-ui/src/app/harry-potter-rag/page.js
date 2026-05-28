@@ -541,12 +541,11 @@ Mr. Dursley was the director of a firm called Grunnings, which made drills. He w
                       <div className="ai-response">
                         <Tile style={{ marginTop: '1rem', backgroundColor: '#e0e0e0' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
-                            <h4 style={{ margin: 0 }}>AI Response (TinyLlama)</h4>
                             <AILabel size="sm">
                               <AILabelContent>
                                 <div>
                                   <p className="ai-label-heading">AI Generated</p>
-                                  <p className="ai-label-text">Response from TinyLlama without RAG context</p>
+                                  <p className="ai-label-text">TinyLlama response without RAG context</p>
                                 </div>
                               </AILabelContent>
                             </AILabel>
@@ -944,12 +943,11 @@ Mr. Dursley was the director of a firm called Grunnings, which made drills. He w
                       
                       <Tile style={{ marginTop: '1rem', backgroundColor: '#e0e0e0' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
-                          <h4 style={{ margin: 0 }}>AI Response with RAG (TinyLlama)</h4>
                           <AILabel size="sm">
                             <AILabelContent>
                               <div>
                                 <p className="ai-label-heading">AI Generated with RAG</p>
-                                <p className="ai-label-text">Response enhanced with context from Harry Potter book</p>
+                                <p className="ai-label-text">TinyLlama response enhanced with Harry Potter book context</p>
                               </div>
                             </AILabelContent>
                           </AILabel>
