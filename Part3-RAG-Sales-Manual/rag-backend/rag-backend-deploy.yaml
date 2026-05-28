@@ -17,8 +17,8 @@ spec:
     spec:
       containers:
         - name: rag-backend
-          image: rag-backend:latest
-          imagePullPolicy: IfNotPresent
+          image: image-registry.openshift-image-registry.svc:5000/rag-demo/rag-backend:latest
+          imagePullPolicy: Always
           ports:
             - containerPort: 8080
               name: http

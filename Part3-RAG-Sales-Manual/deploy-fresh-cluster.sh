@@ -237,11 +237,10 @@ if ! oc get route/carbon-rag-ui &> /dev/null; then
     oc apply -f carbon-rag-ui-route.yaml
 fi
 
-# Set environment variables
-BACKEND_URL=$(oc get route rag-backend -o jsonpath='{.spec.host}')
-echo "Configuring frontend environment variables..."
+# Set environment variables for internal backend communication
+echo "Configuring frontend to use internal backend service..."
 oc set env deployment/carbon-rag-ui \
-  NEXT_PUBLIC_API_URL=https://$BACKEND_URL
+  RAG_BACKEND_URL=http://rag-backend:8080
 
 echo "Waiting for frontend to be ready..."
 oc rollout status deployment/carbon-rag-ui --timeout=10m
@@ -258,20 +257,18 @@ echo ""
 echo "Verifying deployments..."
 echo ""
 
-# Get all service URLs
-OPENSEARCH_URL=$(oc get route opensearch-service -o jsonpath='{.spec.host}' 2>/dev/null || echo "N/A")
-GRANITE_URL=$(oc get route granite-service -o jsonpath='{.spec.host}' 2>/dev/null || echo "N/A")
-LLAMA_URL=$(oc get route llama-service -o jsonpath='{.spec.host}' 2>/dev/null || echo "N/A")
-BACKEND_URL=$(oc get route rag-backend -o jsonpath='{.spec.host}' 2>/dev/null || echo "N/A")
+# Get UI URL (only external route)
 UI_URL=$(oc get route carbon-rag-ui -o jsonpath='{.spec.host}' 2>/dev/null || echo "N/A")
 
-echo "Service URLs:"
-echo "  OpenSearch:    https://$OPENSEARCH_URL"
-echo "  Granite LLM:   https://$GRANITE_URL"
-echo "  TinyLlama LLM: https://$LLAMA_URL"
-echo "  RAG Backend:   https://$BACKEND_URL"
+echo "External Service URLs:"
 echo "  Carbon UI:     https://$UI_URL"
 echo "  Scraper:       $SCRAPER_URL"
+echo ""
+echo "Internal Services (no external routes):"
+echo "  OpenSearch:    http://opensearch-service:9200"
+echo "  Granite LLM:   http://granite-service:8080"
+echo "  TinyLlama LLM: http://llama-service:8080"
+echo "  RAG Backend:   http://rag-backend:8080"
 echo ""
 
 echo "Pod Status:"
@@ -296,8 +293,8 @@ echo ""
 echo "To monitor backend logs:"
 echo "  oc logs -f deployment/rag-backend"
 echo ""
-echo "To check bulk ingestion status:"
-echo "  curl https://$BACKEND_URL/api/bulk-ingestion-status | jq"
+echo "To check bulk ingestion status via frontend API:"
+echo "  curl https://$UI_URL/api/rag/bulk-ingestion-status | jq"
 echo ""
 echo "For troubleshooting, see FRESH_CLUSTER_DEPLOYMENT.md"
 echo ""

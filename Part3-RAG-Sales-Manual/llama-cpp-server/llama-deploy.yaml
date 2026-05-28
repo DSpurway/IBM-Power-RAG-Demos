@@ -1,24 +1,22 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: granite-service
+  name: llama-service
   labels:
-    app: granite-service
+    app: llama-service
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: granite-service
+      app: llama-service
   template:
     metadata:
       labels:
-        app: granite-service
+        app: llama-service
     spec:
-      # Node selector removed - not all Power10 nodes have MMA label set
-      # MMA is available on Power10, but label may not be configured
       containers:
-        - name: granite-llama
-          image: image-registry.openshift-image-registry.svc:5000/rag-demo/granite-service:latest
+        - name: llama-cpp
+          image: image-registry.openshift-image-registry.svc:5000/rag-demo/llama-service:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 8080
@@ -46,10 +44,10 @@ spec:
             failureThreshold: 3
           resources:
             requests:
-              memory: "6Gi"
+              memory: "4Gi"
               cpu: "2"
             limits:
-              memory: "12Gi"
+              memory: "8Gi"
               cpu: "4"
 
 # Made with Bob

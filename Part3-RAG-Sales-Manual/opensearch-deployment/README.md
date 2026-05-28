@@ -1,142 +1,171 @@
 # OpenSearch Deployment for IBM Power
 
-This directory contains the Dockerfile and configuration for deploying OpenSearch on IBM Power (ppc64le) architecture.
-
-## Acknowledgments
-
-This implementation is based on the **IBM Open-Source AI Foundation for Power**, specifically the [IBM project-ai-services](https://github.com/IBM/project-ai-services) OpenSearch deployment.
-
-The IBM Open-Source AI Foundation for Power ([documentation](https://www.ibm.com/docs/en/aiservices)) provides optimized AI services for IBM Power systems. While these services are optimized for IBM Spyre™ on Power, this deployment adapts them for use on **standard OpenShift on Power10 without requiring Spyre**.
-
 ## Overview
 
-OpenSearch is used as the vector database for RAG (Retrieval Augmented Generation) functionality in Parts 2 and 3 of the demo.
+This directory contains the deployment configuration for OpenSearch on IBM Power architecture.
 
-### Why a Custom Build?
+## IBM Power-Optimized Image
 
-The standard OpenSearch Docker images only support x86_64 architecture. For IBM Power systems, we need to:
-1. Download the ppc64le-specific OpenSearch tarball
-2. Build a custom container image
-3. Configure for single-node development use
+**CRITICAL**: This deployment uses the **unauthenticated IBM Power-optimized OpenSearch image** from IBM Container Registry (ICR).
 
-## Architecture
+- **Image**: `icr.io/ppc64le-oss/opensearch-ppc64le:3.3.0`
+- **Namespace**: `ppc64le-oss` (unauthenticated access)
+- **Source**: [Open Source Containers for Power in ICR](https://community.ibm.com/community/user/blogs/priya-seth/2023/04/05/open-source-containers-for-power-in-icr)
+- **Architecture**: Built specifically for IBM Power (ppc64le)
 
-- **Base Image**: Red Hat UBI 9 (Universal Base Image)
-- **OpenSearch Version**: 2.11.0
-- **Java**: OpenJDK 17 (included in UBI)
-- **Security**: Disabled for development (simplified authentication)
-- **Discovery**: Single-node mode (no cluster setup needed)
+### Why This Specific Image?
+
+1. **Architecture**: Standard x86 OpenSearch images from Docker Hub **will not work** on IBM Power architecture
+2. **Authentication**: Images in `icr.io/ibm/*` namespace **require authentication** and will fail with ImagePullBackOff
+3. **Solution**: Use `icr.io/ppc64le-oss/*` namespace which provides **unauthenticated access** to Power-optimized open-source images
+
+### Image Namespace Comparison
+
+| Namespace | Authentication | Example | Status |
+|-----------|---------------|---------|--------|
+| `icr.io/ibm/opensearch:3.3.0` | ❌ Required | Will fail with ImagePullBackOff | ❌ Don't use |
+| `icr.io/ppc64le-oss/opensearch-ppc64le:3.3.0` | ✅ Not required | Works without credentials | ✅ Use this |
+
+**Lesson Learned**: Always use the `ppc64le-oss` namespace for Power-optimized open-source images on OpenShift to avoid authentication issues.
+
+## Files
+
+- **opensearch-deploy.yaml** - Deployment configuration
+  - Uses IBM Power-optimized image
+  - Configured for single-node deployment
+  - Security plugins disabled for development
+  - 4GB memory, 2 CPU cores
+
+- **opensearch-svc.yaml** - Service configuration
+  - ClusterIP service (internal access only)
+  - Exposes ports 9200 (HTTP) and 9300 (transport)
+  - No external route needed
+
+## Deployment
+
+### Manual Deployment
+
+```bash
+# Navigate to opensearch-deployment directory
+cd opensearch-deployment
+
+# Deploy OpenSearch
+oc apply -f opensearch-deploy.yaml
+oc apply -f opensearch-svc.yaml
+
+# Wait for deployment
+oc rollout status deployment/opensearch-service --timeout=10m
+
+# Verify
+oc get pods -l app=opensearch-service
+```
+
+### Automated Deployment
+
+The PowerShell deployment script handles this automatically:
+
+```powershell
+.\deploy-fresh-cluster.ps1
+```
 
 ## Configuration
 
-### Memory Settings
-- **Heap Size**: 512MB min/max (suitable for demo)
-- **Memory Lock**: Disabled (works better in containers)
+### Environment Variables
 
-### Network
-- **Host**: 0.0.0.0 (listens on all interfaces)
-- **Port**: 9200 (HTTP API)
-- **Port**: 9300 (Transport - not used in single-node)
+- `discovery.type=single-node` - Single-node cluster mode
+- `OPENSEARCH_JAVA_OPTS=-Xms2g -Xmx2g` - 2GB heap size
+- `DISABLE_SECURITY_PLUGIN=true` - Security disabled for development
+- `DISABLE_INSTALL_DEMO_CONFIG=true` - No demo configuration
 
-### Security
-- **Security Plugin**: Disabled
-- **Authentication**: None (development only)
-- **SSL/TLS**: Disabled
+### Resources
 
-> ⚠️ **Warning**: This configuration is for development/demo only. Production deployments should enable security features.
+- **Memory**: 4GB (request and limit)
+- **CPU**: 2 cores (request and limit)
+- **Storage**: EmptyDir volume (ephemeral)
 
-## Deployment to OpenShift
+## Access
 
-### Using Import from Git
+OpenSearch is accessed **internally** by the rag-backend service:
 
-1. **Click "+" → "Import from Git"**
+- **Service Name**: `opensearch-service`
+- **Port**: 9200 (HTTP)
+- **URL**: `http://opensearch-service:9200`
 
-2. **Git Repository**:
-   ```
-   https://github.com/DSpurway/IBM-Power-RAG-Demos
-   ```
+No external route is created - OpenSearch is only accessible within the cluster.
 
-3. **Advanced Git Options**:
-   - Context dir: `/Part3-RAG-Sales-Manual/opensearch-deployment`
+## Verification
 
-4. **Application Settings**:
-   - Application: `ibm-power-rag-demos-app`
-   - Name: `opensearch-service`
-   - Target port: 9200
-   - Create route: ☐ No (internal access only)
+### From within the cluster
 
-5. **Resources** (Recommended):
-   - Memory: 1Gi request, 2Gi limit
-   - CPU: 500m request, 1 core limit
-   - Storage: 10Gi persistent volume (optional for persistence)
-
-### Build Time
-
-- **Expected**: 5-10 minutes
-- **Download**: ~200MB OpenSearch tarball
-- **Extract**: Unpack and configure
-
-## Testing
-
-### Health Check
 ```bash
-oc exec -it deployment/opensearch-service -- curl http://localhost:9200/_cluster/health
+# Get a pod name
+POD=$(oc get pod -l app=rag-backend -o jsonpath='{.items[0].metadata.name}')
+
+# Test OpenSearch from backend pod
+oc exec $POD -- curl -s http://opensearch-service:9200
+
+# Check cluster health
+oc exec $POD -- curl -s http://opensearch-service:9200/_cluster/health
 ```
 
-Expected response:
-```json
-{
-  "cluster_name": "opensearch-cluster",
-  "status": "green",
-  "number_of_nodes": 1
-}
-```
+### Check logs
 
-### Create Test Index
 ```bash
-oc exec -it deployment/opensearch-service -- curl -X PUT http://localhost:9200/test-index
-```
-
-### List Indices
-```bash
-oc exec -it deployment/opensearch-service -- curl http://localhost:9200/_cat/indices
-```
-
-## Integration with RAG Backend
-
-The RAG backend expects these environment variables:
-
-```yaml
-OPENSEARCH_HOST: opensearch-service
-OPENSEARCH_PORT: 9200
-OPENSEARCH_USERNAME: admin  # Not used when security disabled
-OPENSEARCH_PASSWORD: admin  # Not used when security disabled
-OPENSEARCH_USE_SSL: false
+oc logs -f deployment/opensearch-service
 ```
 
 ## Troubleshooting
 
-### Pod Crashes with OOMKilled
-- Increase memory limits
-- Check heap size settings in Dockerfile
+### Pod not starting
 
-### Connection Refused
-- Verify pod is running: `oc get pods`
-- Check service exists: `oc get svc opensearch-service`
-- View logs: `oc logs deployment/opensearch-service`
+```bash
+# Check pod status
+oc get pods -l app=opensearch-service
 
-### Slow Startup
-- OpenSearch takes 30-60 seconds to start
-- Check logs for "started" message
-- Health check has 60s start period
+# Check events
+oc describe pod -l app=opensearch-service
 
-### Build Fails
-- Verify ppc64le tarball is available from artifacts.opensearch.org
-- Check network connectivity
-- Review build logs for specific errors
+# Check logs
+oc logs -l app=opensearch-service
+```
+
+### Common Issues
+
+1. **Image pull errors**: Ensure you're using the IBM Power image from ICR
+2. **Memory issues**: Single-node cluster may need resource adjustments
+3. **Startup timeout**: OpenSearch can take 2-3 minutes to start
+
+## Available Versions
+
+IBM Container Registry provides multiple OpenSearch versions for Power in the `ppc64le-oss` namespace:
+
+- `icr.io/ppc64le-oss/opensearch-ppc64le:3.3.0` (current - unauthenticated)
+- `icr.io/ppc64le-oss/opensearch-ppc64le:2.11.1` (unauthenticated)
+- `icr.io/ppc64le-oss/opensearch-ppc64le:2.9.0` (unauthenticated)
+
+**Note**: The `icr.io/ibm/*` namespace versions require authentication and should not be used for OpenShift deployments without proper image pull secrets.
+
+See the [IBM Community blog post](https://community.ibm.com/community/user/blogs/priya-seth/2023/04/05/open-source-containers-for-power-in-icr) for the complete list.
+
+## Production Considerations
+
+For production deployments, consider:
+
+1. **Enable security plugins** - Remove `DISABLE_SECURITY_PLUGIN`
+2. **Persistent storage** - Replace emptyDir with PVC
+3. **Multi-node cluster** - Remove `discovery.type=single-node`
+4. **Resource tuning** - Adjust memory/CPU based on workload
+5. **Backup strategy** - Implement snapshot/restore
 
 ## References
 
+- [IBM Open Source Containers for Power](https://community.ibm.com/community/user/blogs/priya-seth/2023/04/05/open-source-containers-for-power-in-icr)
 - [OpenSearch Documentation](https://opensearch.org/docs/latest/)
-- [IBM project-ai-services](https://github.com/IBM/project-ai-services)
-- [OpenSearch Downloads](https://opensearch.org/downloads.html)
+- [IBM Container Registry](https://icr.io)
+
+---
+
+**Created**: 2026-05-28
+**Updated**: 2026-05-28
+**For**: IBM Power10 OpenShift Cluster
+**Image**: `icr.io/ppc64le-oss/opensearch-ppc64le:3.3.0` (unauthenticated)

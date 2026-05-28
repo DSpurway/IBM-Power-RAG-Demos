@@ -16,14 +16,14 @@ spec:
     spec:
       containers:
       - name: carbon-rag-ui
-        image: image-registry.openshift-image-registry.svc:5000/llm-on-techzone/carbon-rag-ui:latest
+        image: image-registry.openshift-image-registry.svc:5000/rag-demo/carbon-rag-ui:latest
         imagePullPolicy: Always
         ports:
         - containerPort: 3000
           protocol: TCP
         env:
-        - name: NEXT_PUBLIC_RAG_BACKEND_URL
-          value: "https://rag-backend-llm-on-techzone.apps.p1219.cecc.ihost.com"
+        - name: RAG_BACKEND_URL
+          value: "http://rag-backend:8080"
         - name: NODE_ENV
           value: "production"
         - name: NEXT_TELEMETRY_DISABLED
