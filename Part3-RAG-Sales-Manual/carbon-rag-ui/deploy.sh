@@ -23,13 +23,10 @@ if ! oc get deployment rag-backend &> /dev/null; then
     exit 1
 fi
 
-RAG_BACKEND_ROUTE=$(oc get route rag-backend -o jsonpath='{.spec.host}' 2>/dev/null || echo "")
-if [ -z "$RAG_BACKEND_ROUTE" ]; then
-    echo "ERROR: rag-backend route not found!"
-    exit 1
-fi
-
-echo "✓ rag-backend found at: https://$RAG_BACKEND_ROUTE"
+# Use internal service URL (no external route needed)
+RAG_BACKEND_URL="http://rag-backend:8080"
+echo "✓ rag-backend deployment found"
+echo "  Using internal service URL: $RAG_BACKEND_URL"
 echo ""
 
 # Build the Docker image
@@ -69,9 +66,8 @@ else
     echo ""
 fi
 
-# Update backend URL in deployment
-echo "Updating backend URL in deployment..."
-sed -i.bak "s|value: \"https://rag-backend.*\"|value: \"https://$RAG_BACKEND_ROUTE\"|g" openshift-deployment.yaml
+# Backend URL is already set correctly in openshift-deployment.yaml as http://rag-backend:8080
+echo "Using internal backend URL: $RAG_BACKEND_URL"
 
 # Deploy to OpenShift
 echo "Deploying to OpenShift..."
@@ -110,7 +106,7 @@ if [ -n "$UI_ROUTE" ]; then
     echo "=========================================="
     echo ""
     echo "Carbon RAG UI URL: https://$UI_ROUTE"
-    echo "Backend URL: https://$RAG_BACKEND_ROUTE"
+    echo "Backend URL: $RAG_BACKEND_URL (internal)"
     echo ""
     echo "Test the deployment:"
     echo "  1. Open https://$UI_ROUTE in your browser"
