@@ -897,7 +897,7 @@ export default function SalesManualPage() {
           </div>
         )}
       </Modal>
-    </>
+    </Grid>
   );
 }
 
