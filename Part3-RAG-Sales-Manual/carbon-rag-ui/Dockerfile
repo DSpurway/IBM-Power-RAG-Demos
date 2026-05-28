@@ -20,7 +20,8 @@ COPY --chown=nextjs:nextjs package.json ./
 
 # Install dependencies as nextjs user
 USER nextjs
-RUN npm install
+RUN npm install && \
+    npm install @carbon/react@latest
 
 # Copy application files
 COPY --chown=nextjs:nextjs . .
