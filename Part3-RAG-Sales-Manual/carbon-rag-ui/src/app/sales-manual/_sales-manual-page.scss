@@ -1,10 +1,17 @@
 @use '@carbon/react/scss/spacing' as *;
 @use '@carbon/react/scss/type' as *;
+@use '@carbon/react/scss/breakpoint' as *;
 @use '@carbon/react/scss/theme' as *;
+@use './mixins.scss' as *;
+@use './overrides.scss';
+
+html {
+  background-color: $layer-01;
+}
 
 .rag-page__banner {
   padding-top: $spacing-05;
-  padding-bottom: $spacing-07;
+  padding-bottom: $spacing-07 * 4;
   padding-left: $spacing-06;
 }
 
@@ -12,8 +19,61 @@
   @include type-style('productive-heading-05');
 }
 
+.rag-page__r2 {
+  margin-top: rem(-40px);
+}
+
 .rag-page__content {
-  padding: $spacing-05;
+  padding: $spacing-10 0 0 $spacing-06;
+  padding-bottom: 0;
+}
+
+/* Remove bottom margin on last grid row */
+.rag-page__content :where(.cds--row:last-child, .cds--subgrid-row:last-child) {
+  margin-bottom: 0;
+}
+
+.rag-page__content :where([class*="--row"]:last-child) {
+  margin-bottom: 0;
+}
+
+.rag-page__content.cds--subgrid {
+  padding-block-end: 0;
+}
+
+.rag-page__subheading {
+  @include type-style('productive-heading-03');
+  font-weight: 600;
+}
+
+.rag-page__p {
+  @include type-style('productive-heading-03');
+  margin-top: $spacing-06;
+  margin-bottom: 0;
+
+  @include breakpoint-between((320px + 1), md) {
+    max-width: 75%;
+  }
+}
+
+.rag-page__label {
+  @include type-style('heading-01');
+
+  @include breakpoint-down(md) {
+    padding-bottom: 1.5rem;
+  }
+}
+
+.rag-page__banner,
+.rag-page__r2,
+.rag-page__content {
+  margin-left: -20px;
+  margin-right: -20px;
+
+  @include breakpoint-down(md) {
+    margin-left: 0;
+    margin-right: 0;
+  }
 }
 
 .tile-spacing {
@@ -26,11 +86,30 @@
 
 .answer-section {
   margin-top: $spacing-07;
+  
+  h4 {
+    @include type-style('productive-heading-03');
+    font-weight: 600;
+  }
 }
 
 .answer-tile {
   margin-top: $spacing-05;
   background-color: $layer-01;
+  padding: $spacing-05;
+  
+  // Improve readability of AI-generated content
+  line-height: 1.6;
+  
+  // Style for formatted content
+  p {
+    margin-bottom: $spacing-03;
+  }
+  
+  ul, ol {
+    margin-left: $spacing-05;
+    margin-bottom: $spacing-03;
+  }
 }
 
 .progress-tile {
@@ -124,6 +203,29 @@
 
 .clarification-select {
   margin-top: $spacing-05;
+}
+
+.tabs-group {
+  background-color: $layer-01;
+  padding: 0 0;
+  margin-bottom: 0;
+}
+
+.tabs-group-content {
+  padding: $spacing-10 0 0 $spacing-06;
+  padding-bottom: 0;
+}
+
+.tabs-group-content :where(.cds--row:last-child, .cds--subgrid-row:last-child) {
+  margin-bottom: 0;
+}
+
+.tabs-group-content :where([class*="--row"]:last-child) {
+  margin-bottom: 0;
+}
+
+.tabs-group-content.cds--subgrid {
+  padding-block-end: 0;
 }
 
 .button-group {

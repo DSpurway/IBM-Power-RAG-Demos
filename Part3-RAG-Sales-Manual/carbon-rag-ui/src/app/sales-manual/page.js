@@ -31,6 +31,8 @@ import {
   Select,
   SelectItem,
   Layer,
+  AILabel,
+  AILabelContent,
 } from '@carbon/react';
 import {
   Checkmark,
@@ -480,23 +482,19 @@ export default function SalesManualPage() {
   }));
 
   return (
-    <>
-      {/* Banner Section - Separate Grid */}
-      <Grid className="rag-page" fullWidth>
-        <Column lg={16} md={8} sm={4} className="rag-page__banner">
-          <Breadcrumb noTrailingSlash>
-            <BreadcrumbItem href="/">Home</BreadcrumbItem>
-            <BreadcrumbItem href="/sales-manual">Sales Manual RAG</BreadcrumbItem>
-          </Breadcrumb>
-          <h1 className="rag-page__heading">IBM Power Sales Manual RAG</h1>
-        </Column>
-      </Grid>
-      
-      {/* Content Section - Separate Grid */}
-      <Grid fullWidth>
-        <Column lg={16} md={8} sm={4} className="rag-page__content">
+    <Grid className="rag-page" fullWidth>
+      <Column lg={16} md={8} sm={4} className="rag-page__banner">
+        <Breadcrumb noTrailingSlash aria-label="Page navigation">
+          <BreadcrumbItem>
+            <a href="/">Home</a>
+          </BreadcrumbItem>
+        </Breadcrumb>
+        <h1 className="rag-page__heading">IBM Power Sales Manual RAG</h1>
+      </Column>
+
+      <Column lg={16} md={8} sm={4} className="rag-page__r2">
         <Tabs selectedIndex={activeTab} onChange={({ selectedIndex }) => setActiveTab(selectedIndex)}>
-          <TabList aria-label="Sales Manual tabs" contained>
+          <TabList className="tabs-group" aria-label="Sales Manual tabs" contained>
             <Tab>Manage Source Documents</Tab>
             <Tab>Query Documentation</Tab>
           </TabList>
@@ -504,7 +502,7 @@ export default function SalesManualPage() {
           <TabPanels>
             {/* Tab 1: Manage Servers */}
             <TabPanel>
-              <Grid>
+              <Grid className="tabs-group-content">
                 <Column lg={16}>
                   <Tile className="tile-spacing">
                     <h3>IBM Power Server Documentation Management</h3>
@@ -668,7 +666,7 @@ export default function SalesManualPage() {
             
             {/* Tab 2: Query Documentation */}
             <TabPanel>
-              <Grid>
+              <Grid className="tabs-group-content">
                 <Column lg={16}>
                   <Tile className="tile-spacing">
                     <h3>Query IBM Power Documentation</h3>
@@ -711,7 +709,17 @@ export default function SalesManualPage() {
                     
                     {queryResults && (
                       <div className="answer-section">
-                        <h4>Answer:</h4>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
+                          <h4 style={{ margin: 0 }}>Answer</h4>
+                          <AILabel size="sm">
+                            <AILabelContent>
+                              <div>
+                                <p className="secondary">AI Generated</p>
+                                <p className="secondary">Hybrid AI Response</p>
+                              </div>
+                            </AILabelContent>
+                          </AILabel>
+                        </div>
                         
                         {/* AI Services Attribution */}
                         {queryResults.ai_services_used && queryResults.ai_services_used.length > 0 && (
@@ -863,8 +871,7 @@ export default function SalesManualPage() {
             </TabPanel>
           </TabPanels>
         </Tabs>
-        </Column>
-      </Grid>
+      </Column>
       
       {/* Server Details Modal */}
       <Modal
