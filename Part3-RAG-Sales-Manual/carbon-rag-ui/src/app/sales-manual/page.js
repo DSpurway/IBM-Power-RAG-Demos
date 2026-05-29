@@ -177,7 +177,8 @@ export default function SalesManualPage() {
     
     try {
       // Get collections from backend (now returns MTM-based collection metadata with doc counts)
-      const response = await fetch('/api/rag/collections');
+      // Add cache-busting timestamp to force fresh data
+      const response = await fetch(`/api/collections?_t=${Date.now()}`);
       if (!response.ok) throw new Error('Failed to load collections');
       
       const data = await response.json();
