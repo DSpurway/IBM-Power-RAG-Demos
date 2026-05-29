@@ -230,34 +230,54 @@ export default function SalesManualPage() {
   // Poll bulk ingestion status
   const pollBulkIngestionStatus = async () => {
     try {
+      console.log('[Polling] Fetching bulk ingestion status...');
+      
       // Call through Next.js API route, not directly to backend
-      const response = await fetch('/api/rag/bulk-ingestion-status');
+      const response = await fetch('/api/rag/bulk-ingestion-status', {
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache'
+        }
+      });
       
       if (!response.ok) {
-        console.error('Failed to fetch bulk ingestion status');
+        console.error('[Polling] Failed to fetch bulk ingestion status:', response.status);
         // Continue polling even on error
         if (bulkIngestionInProgress) {
+          console.log('[Polling] Retrying in 10 seconds...');
           setTimeout(pollBulkIngestionStatus, 10000);
         }
         return;
       }
       
       const status = await response.json();
-      console.log('[Bulk Ingestion] Status update:', status);
+      console.log('[Polling] Status update:', {
+        in_progress: status.in_progress,
+        current_server: status.current_server,
+        completed: status.completed_count,
+        skipped: status.skipped_count,
+        failed: status.failed_count,
+        total: status.total
+      });
+      
       setBulkIngestionStatus(status);
       
       // Track if we've seen the ingestion actually start
       if (status.in_progress) {
         setBulkIngestionStarted(true);
+        console.log('[Polling] Ingestion is active, will continue polling');
       }
       
       // Continue polling if:
       // 1. Backend says it's in progress, OR
       // 2. We haven't seen it start yet (give backend thread time to initialize)
       if (status.in_progress || !bulkIngestionStarted) {
+        console.log('[Polling] Scheduling next poll in 10 seconds');
         setTimeout(pollBulkIngestionStatus, 10000); // Poll every 10 seconds
       } else {
         // Ingestion complete (we've seen it start and now it's finished)
+        console.log('[Polling] Ingestion complete, stopping polling');
         setBulkIngestionInProgress(false);
         setLoading(false);
         
@@ -275,9 +295,10 @@ export default function SalesManualPage() {
         await loadServerStatus();
       }
     } catch (err) {
-      console.error('Error polling bulk ingestion status:', err);
+      console.error('[Polling] Error polling bulk ingestion status:', err);
       // Continue polling even on error
       if (bulkIngestionInProgress) {
+        console.log('[Polling] Error occurred, retrying in 10 seconds...');
         setTimeout(pollBulkIngestionStatus, 10000);
       }
     }
@@ -288,7 +309,16 @@ export default function SalesManualPage() {
     setBulkIngestionInProgress(true);
     setBulkIngestionStatus(null);
     setBulkIngestionStarted(false); // Reset the started flag
-    setError('Starting bulk ingestion of all 26 servers... This will take several hours.');
+    
+    // Check if there are any not-indexed servers to give better messaging
+    const notIndexedCount = servers.filter(s => s.status === 'not-indexed').length;
+    const indexedCount = servers.filter(s => s.status === 'indexed').length;
+    
+    if (notIndexedCount > 0 && indexedCount > 0) {
+      setError(`Resuming ingestion: ${indexedCount} already indexed, retrying ${notIndexedCount} servers...`);
+    } else {
+      setError('Starting bulk ingestion of all 26 servers... This will take several hours.');
+    }
     
     try {
       // Call bulk ingest endpoint
@@ -319,7 +349,11 @@ export default function SalesManualPage() {
         started_at: new Date().toISOString()
       });
       
-      setError(`Bulk ingestion started! Processing ${data.total} servers. Status updates will appear below.`);
+      if (notIndexedCount > 0 && indexedCount > 0) {
+        setError(`Bulk ingestion resumed! Retrying ${notIndexedCount} servers (${indexedCount} will be skipped as already indexed).`);
+      } else {
+        setError(`Bulk ingestion started! Processing ${data.total} servers. Status updates will appear below.`);
+      }
       
       // Start polling for progress immediately (backend thread starts quickly)
       setTimeout(pollBulkIngestionStatus, 2000); // Start polling after 2 seconds
@@ -582,10 +616,13 @@ export default function SalesManualPage() {
                           {bulkIngestionStatus.failed && bulkIngestionStatus.failed.length > 0 && (
                             <details className="progress-details">
                               <summary className="progress-details__summary progress-details__content--failed">
-                                Failed Servers ({bulkIngestionStatus.failed.length})
+                                {bulkIngestionStatus.in_progress
+                                  ? `Retrying Previously Failed (${bulkIngestionStatus.failed.length})`
+                                  : `Failed Servers (${bulkIngestionStatus.failed.length})`
+                                }
                               </summary>
                               <div className="progress-details__content progress-details__content--failed">
-                                {bulkIngestionStatus.failed.join(', ')}
+                                {bulkIngestionStatus.failed.map(f => typeof f === 'string' ? f : f.server || f.mtm).join(', ')}
                               </div>
                             </details>
                           )}
