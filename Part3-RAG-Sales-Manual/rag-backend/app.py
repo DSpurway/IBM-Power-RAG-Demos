@@ -2341,8 +2341,9 @@ def start_bulk_ingestion():
                 
                 logger.info(f"[Skip Check] {mtm}: Collection name = {collection_name}")
                 
-                # Use collection name directly as index name (no MD5 hashing)
-                index_name = collection_name
+                # Generate hash-based index name (system uses MD5 hashing)
+                index_name = _generate_index_name(collection_name)
+                logger.info(f"[Skip Check] {mtm}: Hash-based index name = {index_name}")
                 
                 # Check if index exists
                 client = get_opensearch_client()
