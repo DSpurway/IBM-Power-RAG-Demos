@@ -269,30 +269,39 @@ export default function SalesManualPage() {
         console.log('[Polling] Ingestion is active, will continue polling');
       }
       
-      // Continue polling if:
-      // 1. Backend says it's in progress, OR
-      // 2. We haven't seen it start yet (give backend thread time to initialize)
-      if (status.in_progress || !bulkIngestionStarted) {
-        console.log('[Polling] Scheduling next poll in 10 seconds');
+      // Continue polling if backend says it's in progress
+      if (status.in_progress) {
+        console.log('[Polling] Ingestion is active, scheduling next poll in 10 seconds');
+        setBulkIngestionStarted(true);
         setTimeout(pollBulkIngestionStatus, 10000); // Poll every 10 seconds
       } else {
-        // Ingestion complete (we've seen it start and now it's finished)
-        console.log('[Polling] Ingestion complete, stopping polling');
-        setBulkIngestionInProgress(false);
-        setLoading(false);
+        // Backend says ingestion is NOT in progress
+        // Check if we have any completion data (completed_count > 0 or failed_count > 0)
+        const hasCompletionData = (status.completed_count > 0 || status.failed_count > 0);
         
-        // Show completion message
-        const skippedCount = status.skipped_count || 0;
-        if (status.failed_count > 0) {
-          setError(`Bulk ingestion completed with errors. ${status.completed_count} succeeded, ${skippedCount} skipped (unchanged), ${status.failed_count} failed.`);
-        } else if (skippedCount > 0) {
-          setError(`Bulk ingestion completed! ${status.completed_count} re-ingested, ${skippedCount} skipped (unchanged).`);
+        if (hasCompletionData) {
+          // Ingestion completed - show results
+          console.log('[Polling] Ingestion complete, stopping polling');
+          setBulkIngestionInProgress(false);
+          setLoading(false);
+          
+          // Show completion message
+          const skippedCount = status.skipped_count || 0;
+          if (status.failed_count > 0) {
+            setError(`Bulk ingestion completed with errors. ${status.completed_count} succeeded, ${skippedCount} skipped (unchanged), ${status.failed_count} failed.`);
+          } else if (skippedCount > 0) {
+            setError(`Bulk ingestion completed! ${status.completed_count} re-ingested, ${skippedCount} skipped (unchanged).`);
+          } else {
+            setError(`Bulk ingestion completed successfully! All ${status.completed_count} servers indexed.`);
+          }
+          
+          // Reload server status
+          await loadServerStatus();
         } else {
-          setError(`Bulk ingestion completed successfully! All ${status.completed_count} servers indexed.`);
+          // No completion data yet - backend thread may still be initializing
+          console.log('[Polling] No completion data yet, backend may be initializing. Continuing to poll...');
+          setTimeout(pollBulkIngestionStatus, 10000);
         }
-        
-        // Reload server status
-        await loadServerStatus();
       }
     } catch (err) {
       console.error('[Polling] Error polling bulk ingestion status:', err);
