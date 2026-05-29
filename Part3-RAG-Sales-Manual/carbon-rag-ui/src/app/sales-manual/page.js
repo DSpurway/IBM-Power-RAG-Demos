@@ -154,6 +154,17 @@ export default function SalesManualPage() {
         
         // Reload server status to show updated counts
         await loadServerStatus();
+      } else {
+        // Backend has no ingestion state (total: 0) - could be fresh start or backend restart
+        // Clear any stuck frontend state and load server status
+        console.log('[Page Load] No ingestion state in backend, clearing frontend state');
+        setBulkIngestionInProgress(false);
+        setBulkIngestionStatus(null);
+        setBulkIngestionStarted(false);
+        setError('');
+        
+        // Load server status to enable buttons and show current state
+        await loadServerStatus();
       }
     } catch (err) {
       console.error('[Page Load] Error checking bulk ingestion status:', err);
