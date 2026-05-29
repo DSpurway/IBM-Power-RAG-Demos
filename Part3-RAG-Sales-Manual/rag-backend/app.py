@@ -2324,32 +2324,42 @@ def start_bulk_ingestion():
         # Helper function to check if collection needs re-ingestion
         def should_reingest(server):
             """Check if server collection needs re-ingestion based on content hash"""
+            mtm = server['mtm']
+            logger.info(f"[Skip Check] Starting skip check for {mtm}")
+            
             if force_reingest:
-                logger.info(f"[Bulk Ingestion] Force re-ingest enabled for {server['mtm']}")
+                logger.info(f"[Skip Check] ❌ {mtm}: Force re-ingest enabled")
                 return True, "forced"
             
             try:
                 # Generate collection name and use it directly as index name
                 from server_mtm_mapper import get_collection_name_for_mtm
-                collection_name = get_collection_name_for_mtm(server['mtm'])
+                collection_name = get_collection_name_for_mtm(mtm)
                 if not collection_name:
+                    logger.warning(f"[Skip Check] ❌ {mtm}: No collection mapping found")
                     return True, "no_collection_mapping"
+                
+                logger.info(f"[Skip Check] {mtm}: Collection name = {collection_name}")
                 
                 # Use collection name directly as index name (no MD5 hashing)
                 index_name = collection_name
                 
                 # Check if index exists
                 client = get_opensearch_client()
-                if not client.indices.exists(index=index_name):
-                    logger.info(f"[Bulk Ingestion] Index {index_name} doesn't exist for {server['mtm']}")
+                exists = client.indices.exists(index=index_name)
+                logger.info(f"[Skip Check] {mtm}: Index exists = {exists}")
+                
+                if not exists:
+                    logger.info(f"[Skip Check] ❌ {mtm}: Index {index_name} doesn't exist")
                     return True, "index_missing"
                 
                 # Get document count
                 count_response = client.count(index=index_name)
                 doc_count = count_response.get('count', 0)
+                logger.info(f"[Skip Check] {mtm}: Document count = {doc_count}")
                 
                 if doc_count == 0:
-                    logger.info(f"[Bulk Ingestion] Index {index_name} is empty for {server['mtm']}")
+                    logger.info(f"[Skip Check] ❌ {mtm}: Index {index_name} is empty")
                     return True, "index_empty"
                 
                 # Get a sample document to check content hash
@@ -2363,17 +2373,20 @@ def start_bulk_ingestion():
                 )
                 
                 if search_response['hits']['total']['value'] == 0:
+                    logger.warning(f"[Skip Check] ❌ {mtm}: No documents found in search")
                     return True, "no_documents"
                 
                 existing_doc = search_response['hits']['hits'][0]['_source']
                 # Try both nested and flat structure
                 existing_hash = existing_doc.get('content_hash') or existing_doc.get('metadata', {}).get('content_hash')
+                logger.info(f"[Skip Check] {mtm}: Existing hash = {existing_hash[:8] if existing_hash else 'None'}...")
                 
                 if not existing_hash:
-                    logger.info(f"[Bulk Ingestion] No content hash found for {server['mtm']}, will re-ingest")
+                    logger.info(f"[Skip Check] ❌ {mtm}: No content hash found in document")
                     return True, "no_hash"
                 
-                # Scrape current content to get new hash (lightweight check)
+                # Scrape current content to get new hash
+                logger.info(f"[Skip Check] {mtm}: Scraping current content to compare hash...")
                 scraper_url = os.environ.get('SCRAPER_URL', 'http://host.docker.internal:5000')
                 scraper_response = requests.get(
                     f"{scraper_url}/scrape",
@@ -2382,22 +2395,24 @@ def start_bulk_ingestion():
                 )
                 
                 if scraper_response.status_code != 200:
-                    logger.warning(f"[Bulk Ingestion] Scraper failed for {server['mtm']}, will re-ingest")
+                    logger.warning(f"[Skip Check] ❌ {mtm}: Scraper failed with status {scraper_response.status_code}")
                     return True, "scraper_error"
                 
                 scraper_data = scraper_response.json()
                 new_text = scraper_data.get('full_text', '')
                 new_hash = hashlib.sha256(new_text.encode('utf-8')).hexdigest()
+                logger.info(f"[Skip Check] {mtm}: New hash = {new_hash[:8]}...")
                 
                 if existing_hash == new_hash:
-                    logger.info(f"[Bulk Ingestion] ⏭️  {server['mtm']} unchanged (hash: {existing_hash[:8]}...), skipping")
+                    logger.info(f"[Skip Check] ✅ {mtm}: UNCHANGED - Hashes match, skipping ingestion")
                     return False, "unchanged"
                 else:
-                    logger.info(f"[Bulk Ingestion] 🔄 {server['mtm']} content changed (old: {existing_hash[:8]}..., new: {new_hash[:8]}...), will re-ingest")
+                    logger.info(f"[Skip Check] ❌ {mtm}: CHANGED - Hashes differ (old: {existing_hash[:8]}..., new: {new_hash[:8]}...)")
                     return True, "content_changed"
                     
             except Exception as e:
-                logger.warning(f"[Bulk Ingestion] Error checking {server['mtm']}: {e}, will re-ingest")
+                logger.error(f"[Skip Check] ❌ {mtm}: Exception during check: {type(e).__name__}: {str(e)}")
+                logger.exception(e)  # Log full traceback
                 return True, "check_error"
         
         # Start background thread to process servers
