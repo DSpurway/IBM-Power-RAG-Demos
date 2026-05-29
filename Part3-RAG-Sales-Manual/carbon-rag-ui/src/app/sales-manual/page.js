@@ -134,8 +134,26 @@ export default function SalesManualPage() {
           : `Bulk ingestion in progress: ${status.completed_count} of ${status.total} completed`;
         setError(progressMsg);
         
-        // Start polling
+        // Start polling immediately
         setTimeout(pollBulkIngestionStatus, 2000);
+      } else if (status.total > 0) {
+        // Ingestion completed while we were away - show final status
+        const skippedCount = status.skipped_count || 0;
+        const completedCount = status.completed_count || 0;
+        const failedCount = status.failed_count || 0;
+        
+        console.log('[Page Load] Bulk ingestion completed while away:', { completedCount, skippedCount, failedCount });
+        
+        if (failedCount > 0) {
+          setError(`Bulk ingestion completed with errors. ${completedCount} succeeded, ${skippedCount} skipped (unchanged), ${failedCount} failed.`);
+        } else if (skippedCount > 0) {
+          setError(`Bulk ingestion completed! ${completedCount} re-ingested, ${skippedCount} skipped (unchanged).`);
+        } else {
+          setError(`Bulk ingestion completed successfully! All ${completedCount} servers indexed.`);
+        }
+        
+        // Reload server status to show updated counts
+        await loadServerStatus();
       }
     } catch (err) {
       console.error('[Page Load] Error checking bulk ingestion status:', err);
@@ -589,6 +607,15 @@ export default function SalesManualPage() {
                       >
                         {bulkIngestionInProgress ? 'Ingestion in Progress...' : 'Load All Documents'}
                       </Button>
+                      {!bulkIngestionInProgress && servers.some(s => s.status === 'not-indexed') && (
+                        <Button
+                          kind="secondary"
+                          onClick={handleLoadAllDocuments}
+                          disabled={loading}
+                        >
+                          Resume Ingestion
+                        </Button>
+                      )}
                     </div>
                     
                     <DataTable rows={rows} headers={headers}>
