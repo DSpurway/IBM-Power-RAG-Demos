@@ -2040,48 +2040,74 @@ def ingest_sales_manual():
         # Update bulk ingestion state
         bulk_ingestion_state['current_server'] = f"{server_model} ({mtm})"
         
-        # Call Windows scraper service
-        # The scraper is running on the Windows laptop
+        # Call Code Engine scraper service with retry logic
         scraper_url = os.environ.get('SCRAPER_URL', 'http://host.docker.internal:5000')
         
         logger.info(f"Calling scraper at {scraper_url}/scrape?url={sales_manual_url}")
         
-        try:
-            # Use GET request with URL parameter as the scraper expects
-            scraper_response = requests.get(
-                f"{scraper_url}/scrape",
-                params={'url': sales_manual_url, 'wait': 10},
-                timeout=600  # 10 minute timeout for scraping
-            )
-            scraper_response.raise_for_status()
-            scraper_data = scraper_response.json()
-            
-            if not scraper_data.get('success'):
-                error_msg = scraper_data.get('error', 'Scraping failed')
-                logger.error(f"Scraper failed for MTM {mtm}: {error_msg}")
-                bulk_ingestion_state['failed'].append({
-                    'server': mtm,
-                    'error': error_msg
-                })
-                return jsonify({'error': error_msg}), 500
-            
-            logger.info(f"Scraping successful for MTM {mtm}, got {scraper_data.get('sections_count', 0)} sections")
-            
-        except requests.exceptions.Timeout:
-            error_msg = f"Scraper timeout for MTM {mtm}"
+        # Retry logic for transient failures (e.g., cold starts)
+        max_retries = 3
+        retry_delay = 5  # seconds
+        scraper_data = None
+        last_error = None
+        
+        for attempt in range(max_retries):
+            try:
+                if attempt > 0:
+                    logger.info(f"Retry attempt {attempt + 1}/{max_retries} for MTM {mtm}")
+                    import time
+                    time.sleep(retry_delay)
+                
+                # Use GET request with URL parameter as the scraper expects
+                scraper_response = requests.get(
+                    f"{scraper_url}/scrape",
+                    params={'url': sales_manual_url, 'wait': 10},
+                    timeout=600  # 10 minute timeout for scraping
+                )
+                scraper_response.raise_for_status()
+                scraper_data = scraper_response.json()
+                
+                if not scraper_data.get('success'):
+                    error_msg = scraper_data.get('error', 'Scraping failed')
+                    logger.warning(f"Scraper returned error for MTM {mtm} (attempt {attempt + 1}): {error_msg}")
+                    last_error = error_msg
+                    continue  # Retry
+                
+                # Success!
+                logger.info(f"Scraping successful for MTM {mtm}, got {scraper_data.get('sections_count', 0)} sections")
+                break
+                
+            except requests.exceptions.Timeout:
+                error_msg = f"Scraper timeout for MTM {mtm} (attempt {attempt + 1})"
+                logger.warning(error_msg)
+                last_error = 'Timeout'
+                if attempt == max_retries - 1:
+                    # Final attempt failed
+                    bulk_ingestion_state['failed'].append({
+                        'server': mtm,
+                        'error': 'Timeout after retries'
+                    })
+                    return jsonify({'error': error_msg}), 504
+                    
+            except requests.exceptions.RequestException as e:
+                error_msg = f"Failed to call scraper (attempt {attempt + 1}): {str(e)}"
+                logger.warning(error_msg)
+                last_error = str(e)
+                if attempt == max_retries - 1:
+                    # Final attempt failed
+                    bulk_ingestion_state['failed'].append({
+                        'server': mtm,
+                        'error': str(e)
+                    })
+                    return jsonify({'error': error_msg}), 500
+        
+        # Check if we got valid data after retries
+        if not scraper_data or not scraper_data.get('success'):
+            error_msg = f"Scraper failed for MTM {mtm} after {max_retries} attempts: {last_error}"
             logger.error(error_msg)
             bulk_ingestion_state['failed'].append({
                 'server': mtm,
-                'error': 'Timeout'
-            })
-            return jsonify({'error': error_msg}), 504
-            
-        except requests.exceptions.RequestException as e:
-            error_msg = f"Failed to call scraper: {str(e)}"
-            logger.error(error_msg)
-            bulk_ingestion_state['failed'].append({
-                'server': mtm,
-                'error': str(e)
+                'error': last_error or 'Unknown error'
             })
             return jsonify({'error': error_msg}), 500
         
@@ -2214,6 +2240,8 @@ def start_bulk_ingestion():
     - Checks if collection exists with documents
     - Compares content hash to detect source changes
     - Skips unchanged collections (unless force=true)
+    
+    Includes scraper warm-up to avoid Code Engine cold start issues
     """
     try:
         # Handle empty body gracefully (frontend sends POST with no body)
@@ -2230,6 +2258,24 @@ def start_bulk_ingestion():
                 'completed_count': len(bulk_ingestion_state['completed']),
                 'total': bulk_ingestion_state['total']
             }), 409  # Conflict
+        
+        # Warm up the Code Engine scraper before starting bulk ingestion
+        scraper_url = os.environ.get('SCRAPER_URL', 'http://host.docker.internal:5000')
+        logger.info(f"[Bulk Ingestion] Warming up scraper at {scraper_url}...")
+        
+        try:
+            # Call health endpoint to wake up Code Engine if it's cold
+            health_response = requests.get(f"{scraper_url}/health", timeout=30)
+            if health_response.status_code == 200:
+                logger.info("[Bulk Ingestion] ✅ Scraper is warm and ready")
+            else:
+                logger.warning(f"[Bulk Ingestion] Scraper health check returned {health_response.status_code}, proceeding anyway")
+        except requests.exceptions.RequestException as e:
+            logger.warning(f"[Bulk Ingestion] Scraper health check failed: {e}, proceeding anyway")
+        
+        # Wait a moment to ensure scraper is fully ready
+        import time
+        time.sleep(2)
         
         # Server list with MTM and URLs - ordered by processor generation (Power11 -> Power10 -> Power9)
         # Within each generation: Enterprise first, then Scale-out, then others (largest to smallest)
