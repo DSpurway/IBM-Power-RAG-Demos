@@ -915,6 +915,42 @@ export default function SalesManualPage() {
                                   </Layer>
                                 )}
                                 
+                                {/* Display chunks used for RAG queries */}
+                                {queryResults.chunks_used && queryResults.chunks_used.length > 0 && (
+                                  <Layer withBackground>
+                                    <Tile className="chunks-tile">
+                                      <h5 className="chunks-tile__heading">
+                                        Context Used ({queryResults.chunks_used.length} chunk{queryResults.chunks_used.length !== 1 ? 's' : ''})
+                                      </h5>
+                                      <p className="chunks-tile__helper">
+                                        The following sections from the Sales Manual were used to generate this answer:
+                                      </p>
+                                      {queryResults.chunks_used.map((chunk, idx) => (
+                                        <div key={idx} className="chunk-item" style={{ marginTop: '1rem', padding: '0.75rem', backgroundColor: 'var(--cds-layer-01)', borderRadius: '4px' }}>
+                                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                                            <div>
+                                              <Tag type="blue" size="sm">Chunk {idx + 1}</Tag>
+                                              {chunk.metadata?.section && (
+                                                <Tag type="outline" size="sm" style={{ marginLeft: '0.5rem' }}>
+                                                  {chunk.metadata.section}
+                                                </Tag>
+                                              )}
+                                            </div>
+                                            {chunk.score && (
+                                              <Tag type="green" size="sm">
+                                                Score: {chunk.score.toFixed(3)}
+                                              </Tag>
+                                            )}
+                                          </div>
+                                          <p style={{ fontSize: '0.875rem', color: 'var(--cds-text-secondary)', fontStyle: 'italic' }}>
+                                            {chunk.text}
+                                          </p>
+                                        </div>
+                                      ))}
+                                    </Tile>
+                                  </Layer>
+                                )}
+                                
                                 {/* Display source URL if available */}
                                 {queryResults.source_url && (
                                   <Tile className="source-tile">

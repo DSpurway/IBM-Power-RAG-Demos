@@ -1933,9 +1933,175 @@ def generate():
             
             return jsonify(response_data)
         
-        # Step 3: For non-table queries or failed lookups, use LLM
-        logger.info(f"Using LLM for query (type: {query_type})")
+        # Step 3: For general RAG queries, retrieve relevant chunks first
+        logger.info(f"Using full RAG pipeline for query (type: {query_type})")
         
+        # Step 3.1: Determine collection name from query intent
+        server_model = query_intent.get('server_model')
+        collection_name = None
+        
+        if server_model:
+            # Get MTM for the server model
+            from server_mtm_mapper import get_mtm_for_model
+            server_mtm = get_mtm_for_model(server_model)
+            
+            if server_mtm:
+                collection_name = f"{OPENSEARCH_DB_PREFIX}_mtm_{server_mtm.lower().replace('-', '_')}"
+                logger.info(f"Using collection for {server_model} ({server_mtm}): {collection_name}")
+            else:
+                collection_name = f"{OPENSEARCH_DB_PREFIX}_power_{server_model.lower()}"
+                logger.info(f"Using generic collection for {server_model}: {collection_name}")
+        else:
+            # No server identified - ask user to specify
+            return jsonify({
+                'success': False,
+                'error': 'Could not identify which server you are asking about',
+                'content': 'I understand your question, but I need to know which IBM Power server you\'re asking about. Please specify the server model (e.g., E1080, S924, S1024).',
+                'query_type': 'server_clarification_needed',
+                'ai_services_used': ['watsonx_assistant'],
+                'processing_method': 'nlp_intent_detection'
+            }), 400
+        
+        # Step 3.2: Retrieve relevant chunks from OpenSearch
+        embeddings = get_embeddings()
+        client = get_opensearch_client()
+        index_name = _generate_index_name(collection_name)
+        
+        if not client.indices.exists(index=index_name):
+            return jsonify({
+                'success': False,
+                'error': f'No sales manual data found for {server_model}',
+                'content': f'I don\'t have sales manual data for the IBM Power {server_model} yet. Please ensure the sales manual has been ingested.',
+                'query_type': query_type,
+                'ai_services_used': ['watsonx_assistant', 'opensearch'],
+                'processing_method': 'rag_retrieval_failed'
+            }), 404
+        
+        # Generate query embedding
+        query_vector = embeddings.embed_query(prompt)
+        
+        # Retrieve chunks using hybrid search (with fallback to dense)
+        k = 5  # Number of chunks to retrieve
+        try:
+            search_body = {
+                "size": k * 2,  # Get more for potential reranking
+                "_source": ["chunk_id", "text", "metadata"],
+                "query": {
+                    "hybrid": {
+                        "queries": [
+                            {
+                                "knn": {
+                                    "embedding": {
+                                        "vector": query_vector,
+                                        "k": k * 2
+                                    }
+                                }
+                            },
+                            {
+                                "match": {"text": prompt}
+                            }
+                        ]
+                    }
+                }
+            }
+            
+            response = client.search(index=index_name, body=search_body, params={"search_pipeline": "hybrid_pipeline"})
+            hits = response['hits']['hits']
+            logger.info(f"Hybrid search found {len(hits)} chunks")
+        except Exception as search_error:
+            # Fallback to dense search
+            logger.warning(f"Hybrid search failed: {search_error}. Falling back to dense search.")
+            search_body = {
+                "size": k * 2,
+                "_source": ["chunk_id", "text", "metadata"],
+                "query": {
+                    "knn": {
+                        "embedding": {
+                            "vector": query_vector,
+                            "k": k * 2
+                        }
+                    }
+                }
+            }
+            response = client.search(index=index_name, body=search_body)
+            hits = response['hits']['hits']
+            logger.info(f"Dense fallback search found {len(hits)} chunks")
+        
+        # Apply reranking if we have chunks
+        if len(hits) > 0:
+            reranker = get_reranker_service()
+            chunks = [{"text": hit["_source"].get("text", ""), "hit": hit} for hit in hits]
+            reranked_chunks = reranker.rerank(prompt, chunks, top_k=k)
+            reranked_hits = [chunk["hit"] for chunk in reranked_chunks]
+            logger.info(f"Reranked to top {len(reranked_hits)} chunks")
+        else:
+            reranked_hits = []
+            logger.warning("No chunks found for RAG query")
+        
+        # Extract source information from chunks
+        source_url = None
+        source_filename = None
+        chunks_used = []
+        
+        for hit in reranked_hits:
+            source = hit["_source"]
+            metadata = source.get("metadata", {})
+            
+            # Get source URL from first chunk
+            if not source_url and metadata.get('source'):
+                source_url = metadata['source']
+                source_filename = metadata.get('filename') or metadata.get('source_filename')
+            
+            # Collect chunk information for transparency
+            chunks_used.append({
+                'text': source.get("text", "")[:500] + "..." if len(source.get("text", "")) > 500 else source.get("text", ""),
+                'score': float(hit.get("_score", 0)),
+                'metadata': {
+                    'section': metadata.get('section_title', 'Unknown'),
+                    'section_type': metadata.get('section_type', 'Unknown')
+                }
+            })
+        
+        # Step 3.3: Build RAG prompt with context
+        if not reranked_hits:
+            # No relevant chunks found
+            return jsonify({
+                'success': True,
+                'content': f'I couldn\'t find relevant information in the sales manual for the IBM Power {server_model} to answer your question. The sales manual may not contain this information, or it may need to be re-ingested.',
+                'query_type': query_type,
+                'server_model': server_model,
+                'chunks_found': 0,
+                'chunks_used': [],
+                'ai_services_used': ['watsonx_assistant', 'opensearch'],
+                'processing_method': 'rag_no_chunks_found'
+            })
+        
+        # Build context from retrieved chunks
+        context_parts = []
+        for i, hit in enumerate(reranked_hits, 1):
+            chunk_text = hit["_source"].get("text", "")
+            context_parts.append(f"[Context {i}]\n{chunk_text}\n")
+        
+        context = "\n".join(context_parts)
+        
+        # Build RAG prompt
+        rag_prompt = f"""You are an expert on IBM Power Systems. Answer the following question based ONLY on the provided context from the IBM Power sales manual.
+
+Context from Sales Manual:
+{context}
+
+Question: {prompt}
+
+Instructions:
+- Answer based ONLY on the information in the context above
+- Be specific and technical when appropriate
+- If the context doesn't contain enough information to fully answer the question, say so
+- Do not make up information not present in the context
+- Cite specific details from the context when relevant
+
+Answer:"""
+        
+        # Step 3.4: Generate response with LLM
         # Select LLM service based on model parameter
         if model.lower() == 'tinyllama':
             llm_host = TINYLLAMA_HOST
@@ -1946,13 +2112,13 @@ def generate():
             llm_port = GRANITE_PORT
             logger.info(f"Using Granite model at {llm_host}:{llm_port}")
         
-        logger.info(f"Generating response with temperature={temperature}, n_predict={n_predict}, model={model}, stream={stream}")
+        logger.info(f"Generating RAG response with {len(reranked_hits)} chunks, temperature={temperature}, n_predict={n_predict}")
         
         # Call LLM service
         llm_url = f"http://{llm_host}:{llm_port}/completion"
         
         payload = {
-            "prompt": prompt,
+            "prompt": rag_prompt,
             "temperature": temperature,
             "n_predict": n_predict,
             "stream": stream
@@ -1981,13 +2147,19 @@ def generate():
         
         result = response.json()
         
+        # Build response with transparency
         return jsonify({
             'success': True,
             'content': result.get('content', ''),
-            'model': model,
             'query_type': query_type,
+            'server_model': server_model,
+            'chunks_found': len(hits),
+            'chunks_used': chunks_used,
+            'source_url': source_url,
+            'source_filename': source_filename,
+            'model': model,
             'timings': result.get('timings', {}),
-            'ai_services_used': ['watsonx_assistant', 'opensearch', 'llm'],
+            'ai_services_used': ['watsonx_assistant', 'opensearch', 'reranker', 'llm'],
             'processing_method': 'full_rag_generation',
             'llm_model': 'granite' if model.lower() != 'tinyllama' else 'tinyllama'
         })
