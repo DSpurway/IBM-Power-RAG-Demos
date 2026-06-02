@@ -475,6 +475,14 @@ export default function SalesManualPage() {
       if (!response.ok) throw new Error('Failed to query');
       
       const data = await response.json();
+      console.log('[Query Response]', {
+        query_type: data.query_type,
+        has_chunks: !!data.chunks_used,
+        chunks_count: data.chunks_used?.length || 0,
+        has_source_url: !!data.source_url,
+        source_url: data.source_url,
+        source_filename: data.source_filename
+      });
       setQueryResults(data);
     } catch (err) {
       setError(`Query error: ${err.message}`);
@@ -521,6 +529,14 @@ export default function SalesManualPage() {
       if (!response.ok) throw new Error('Failed to query');
       
       const data = await response.json();
+      console.log('[Clarification Response]', {
+        query_type: data.query_type,
+        has_chunks: !!data.chunks_used,
+        chunks_count: data.chunks_used?.length || 0,
+        has_source_url: !!data.source_url,
+        source_url: data.source_url,
+        source_filename: data.source_filename
+      });
       setQueryResults(data);
     } catch (err) {
       setError(`Query error: ${err.message}`);
@@ -953,20 +969,22 @@ export default function SalesManualPage() {
                                 
                                 {/* Display source URL if available */}
                                 {queryResults.source_url && (
-                                  <Tile className="source-tile">
-                                    <h5 className="source-tile__heading">Source:</h5>
-                                    <a
-                                      href={queryResults.source_url}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="source-tile__link"
-                                    >
-                                      {queryResults.source_filename || queryResults.source_url}
-                                    </a>
-                                    <p className="source-tile__helper">
-                                      Click to verify this information in the original IBM Sales Manual
-                                    </p>
-                                  </Tile>
+                                  <Layer withBackground>
+                                    <Tile className="source-tile">
+                                      <h5 className="source-tile__heading">Source:</h5>
+                                      <a
+                                        href={queryResults.source_url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="source-tile__link"
+                                      >
+                                        {queryResults.source_filename || queryResults.source_url}
+                                      </a>
+                                      <p className="source-tile__helper">
+                                        Click to verify this information in the original IBM Sales Manual
+                                      </p>
+                                    </Tile>
+                                  </Layer>
                                 )}
                               </>
                             )}

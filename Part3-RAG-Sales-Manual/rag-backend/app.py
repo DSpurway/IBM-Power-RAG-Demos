@@ -2085,15 +2085,22 @@ def generate():
         context = "\n".join(context_parts)
         
         # Build RAG prompt
-        rag_prompt = f"""You are an expert on IBM Power Systems. Answer the following question based ONLY on the provided context from the IBM Power sales manual.
+        rag_prompt = f"""You are an expert on IBM Power Systems enterprise servers. You are answering questions about IBM Power servers, which are high-performance enterprise computing systems used in data centers for mission-critical workloads.
 
-Context from Sales Manual:
+IMPORTANT CONTEXT:
+- IBM Power servers (like E1080, S1024, etc.) are enterprise-grade computing systems, NOT consumer appliances
+- When the sales manual mentions "heat generation" or "BTU output", this refers to the thermal characteristics of the server hardware that data center operators need to plan for cooling infrastructure
+- Power consumption specifications help customers plan electrical and cooling requirements for data center deployment
+
+Context from IBM Power Sales Manual:
 {context}
 
 Question: {prompt}
 
 Instructions:
 - Answer based ONLY on the information in the context above
+- Frame your answer in the context of enterprise server specifications and data center planning
+- When discussing power/heat specifications, explain them as technical requirements for data center infrastructure
 - Be specific and technical when appropriate
 - If the context doesn't contain enough information to fully answer the question, say so
 - Do not make up information not present in the context
