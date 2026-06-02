@@ -336,10 +336,10 @@ class SalesManualChunker:
         sections_config = {
             'Abstract': {'strategy': 'keep_intact', 'priority': 'high'},
             'Highlights': {'strategy': 'split_if_large', 'priority': 'medium'},
-            'Description': {'strategy': 'split_by_paragraph', 'priority': 'medium'},
+            'Description': {'strategy': 'split_if_large', 'priority': 'medium'},
             'Product positioning': {'strategy': 'keep_intact', 'priority': 'medium'},
             'Models': {'strategy': 'keep_intact', 'priority': 'high'},
-            'Technical description': {'strategy': 'split_by_subheading', 'priority': 'high'},
+            'Technical description': {'strategy': 'split_if_large', 'priority': 'high'},
             'Accessories': {'strategy': 'keep_intact', 'priority': 'low'}
         }
         
@@ -361,8 +361,9 @@ class SalesManualChunker:
                 if len(section_text) > self.max_chunk_size:
                     sub_chunks = self.text_splitter.split_text(section_text)
                     for i, sub_chunk in enumerate(sub_chunks):
+                        # Don't add (Part X/Y) to chunk text - keep it clean for search
                         chunks.append(self._create_chunk(
-                            f"{section_name} (Part {i+1}/{len(sub_chunks)})",
+                            section_name,
                             sub_chunk, server_name, mtm, url,
                             priority=config['priority'], strategy='split_large',
                             part_index=i, total_parts=len(sub_chunks),
@@ -378,9 +379,11 @@ class SalesManualChunker:
             elif strategy == 'split_by_subheading':
                 sub_chunks = self._split_by_subheadings(section_text, section_name)
                 for sub_name, sub_text in sub_chunks:
+                    # Include subheading in chunk text for better context
+                    chunk_text_with_heading = f"{sub_name}\n\n{sub_text}"
                     chunks.append(self._create_chunk(
                         f"{section_name} - {sub_name}",
-                        sub_text, server_name, mtm, url,
+                        chunk_text_with_heading, server_name, mtm, url,
                         priority=config['priority'], strategy='subheading_split',
                         subsection=sub_name,
                         common_metadata=common_metadata
@@ -389,8 +392,9 @@ class SalesManualChunker:
             elif strategy == 'split_by_paragraph':
                 sub_chunks = self.text_splitter.split_text(section_text)
                 for i, sub_chunk in enumerate(sub_chunks):
+                    # Don't add (Part X/Y) to chunk text - keep it clean for search
                     chunks.append(self._create_chunk(
-                        f"{section_name} (Part {i+1}/{len(sub_chunks)})",
+                        section_name,
                         sub_chunk, server_name, mtm, url,
                         priority=config['priority'], strategy='paragraph_split',
                         part_index=i, total_parts=len(sub_chunks),

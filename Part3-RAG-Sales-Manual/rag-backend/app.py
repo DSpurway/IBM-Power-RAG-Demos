@@ -1981,7 +1981,7 @@ def generate():
         query_vector = embeddings.embed_query(prompt)
         
         # Retrieve chunks using hybrid search (with fallback to dense)
-        k = 5  # Number of chunks to retrieve
+        k = 3  # Number of chunks to retrieve (reduced for faster LLM response)
         try:
             search_body = {
                 "size": k * 2,  # Get more for potential reranking
