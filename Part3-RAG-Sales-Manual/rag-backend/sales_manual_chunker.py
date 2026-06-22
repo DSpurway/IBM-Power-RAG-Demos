@@ -348,6 +348,9 @@ class SalesManualChunker:
             if not section_text:
                 continue
             
+            # Clean the section text - remove metadata artifacts
+            section_text = self._clean_section_text(section_text)
+            
             strategy = config['strategy']
             
             if strategy == 'keep_intact':
@@ -413,20 +416,47 @@ class SalesManualChunker:
             logger.debug(f"Skipping '{section_name}' section - feature codes extracted separately via structured sections")
             return None
         
-        # Pattern: Section name followed by content until next section
-        pattern = rf'{re.escape(section_name)}\s*\n+(.*?)(?=\n\n[A-Z][a-z]+\s*\n|\Z)'
-        match = re.search(pattern, text, re.DOTALL | re.IGNORECASE)
+        # Improved pattern that handles hierarchical sections better
+        # Match section heading followed by content until we hit another major section heading
+        # Major sections start with capital letter and are typically short (< 50 chars)
+        pattern = rf'^{re.escape(section_name)}\s*$\n+(.*?)(?=\n^[A-Z][a-z\s]+$\n|\Z)'
+        match = re.search(pattern, text, re.MULTILINE | re.DOTALL | re.IGNORECASE)
+        
+        if not match:
+            # Fallback: try without strict line boundaries
+            pattern = rf'{re.escape(section_name)}\s*\n+(.*?)(?=\n[A-Z][a-z\s]+\n|\Z)'
+            match = re.search(pattern, text, re.DOTALL | re.IGNORECASE)
         
         if not match:
             return None
             
         section_text = match.group(1).strip()
         
-        # Remove any remaining feature code headings like "(#ECC9) Feature Name" to avoid duplicates
-        # These are already extracted via structured sections with proper metadata
-        section_text = re.sub(r'\(#[A-Z0-9]{4}\)[^\n]*\n', '', section_text)
-        
         return section_text if section_text else None
+    
+    def _clean_section_text(self, text: str) -> str:
+        """
+        Clean section text by removing metadata artifacts and unwanted patterns
+        """
+        # Remove metadata patterns like "Description (Part 181/922)"
+        text = re.sub(r'\(Part\s+\d+/\d+\)', '', text)
+        
+        # Remove standalone feature code references (but keep them if they're part of sentences)
+        # Only remove lines that are JUST feature codes, not feature codes in context
+        lines = text.split('\n')
+        cleaned_lines = []
+        for line in lines:
+            # Skip lines that are ONLY a feature code heading with no other content
+            if re.match(r'^\(#[A-Z0-9]{4}\)\s*-?\s*[A-Z][^\n]{0,50}$', line.strip()):
+                continue
+            cleaned_lines.append(line)
+        
+        text = '\n'.join(cleaned_lines)
+        
+        # Clean up excessive whitespace
+        text = re.sub(r'\n{3,}', '\n\n', text)
+        
+        return text.strip()
     
     def _split_by_subheadings(self, text: str, section_name: str) -> List[tuple]:
         """Split section by H3 subheadings"""

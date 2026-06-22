@@ -1,6 +1,7 @@
 # IBM Power RAG Demos
 
-A collection of demonstrations showcasing Retrieval Augmented Generation (RAG) on IBM Power10 systems using OpenShift.
+A collection of demonstrations showcasing Retrieval Augmented Generation (RAG) on IBM Power10 systems.
+Deployable on **OpenShift** (Parts 1–3) or **RHEL with Podman** (Part 4).
 
 ## Acknowledgments
 
@@ -17,29 +18,40 @@ We gratefully acknowledge the IBM project-ai-services team and the IBM Open-Sour
 
 ## Overview
 
-This repository contains three progressive demonstrations:
+This repository contains three progressive demonstrations, with two deployment paths for Part 3:
 
-1. **Part 1: Deploy a Large Language Model** - Deploy TinyLlama and Granite models on Power10
-2. **Part 2: RAG with Jupyter Notebook** *(Legacy - Optional)* - Vector database integration using Milvus
-3. **Part 3: Production RAG with Carbon UI** *(Recommended)* - Modern web interface for IBM Power sales manual queries
+1. **Part 1: Deploy a Large Language Model** — Deploy TinyLlama and Granite models on OpenShift on Power10
+2. **Part 2: RAG with Jupyter Notebook** *(Legacy - Optional)* — Vector database integration using Milvus
+3. **Part 3: Production RAG with Carbon UI** — Modern web interface for IBM Power sales manual queries
+   - **OCP deployment** — OpenShift manifests in `Part3-RAG-Sales-Manual/`
+   - **Podman/RHEL deployment** — Podman Compose stack in `Part3-RAG-Sales-Manual/podman/`
 
 ## Quick Start
 
-### Prerequisites
+### Prerequisites — OpenShift path (Parts 1–3)
 
 - Access to IBM TechZone
 - OpenShift cluster on Power10 (reserve from [TechZone RAG Collection](https://techzone.ibm.com/collection/retrieval-augmented-generation-rag-on-power10))
 - `oc` CLI installed on your local machine
 
+### Prerequisites — Podman / RHEL path ← recommended if OCP provisioning is unavailable
+
+- RHEL 9 LPAR on IBM Power10 (TechZone: *Generative AI demos on IBM Power*)
+- SSH access to the LPAR — no other local tools needed
+
 ### Recommended Demo Path
 
-For the best experience, follow this streamlined approach:
+**If you have an OCP cluster:**
+1. **Deploy the LLM** (Part 1) — ~10 minutes
+2. **Deploy the Carbon UI RAG Demo** (Part 3) — ~15 minutes
+3. **Load and Query Sales Manuals** — Interactive demo
 
-1. **Deploy the LLM** (Part 1) - ~10 minutes
-2. **Deploy the Carbon UI RAG Demo** (Part 3) - ~15 minutes
-3. **Load and Query Sales Manuals** - Interactive demo
+**If you only have a RHEL LPAR:**
+1. Clone the repo on the LPAR and run `Part3-RAG-Sales-Manual/podman/deploy.sh` — ~20 minutes
+2. **Load and Query Sales Manuals** — Interactive demo
 
-See [QUICK_START.md](QUICK_START.md) for detailed deployment steps.
+See [Part3-RAG-Sales-Manual/podman/README.md](Part3-RAG-Sales-Manual/podman/README.md) for the Podman deployment guide.
+See [QUICK_START.md](QUICK_START.md) for the OCP deployment guide.
 
 ## What This Demo Shows
 
@@ -87,12 +99,18 @@ RAG solves this by:
 
 ```
 IBM-Power-RAG-Demos/
-├── Part1-Deploy-LLM/          # LLM deployment (TinyLlama + Granite)
+├── Part1-Deploy-LLM/          # LLM deployment (TinyLlama + Granite) — OCP
 ├── Part2-RAG/                 # Legacy: Jupyter Notebook demo
-├── Part3-RAG-Sales-Manual/    # Production: Carbon UI + Backend
+├── Part3-RAG-Sales-Manual/    # Application source + both deployment targets
 │   ├── carbon-rag-ui/         # Next.js frontend
 │   ├── rag-backend/           # Python Flask backend
-│   └── [microservices]/       # Supporting services
+│   ├── opensearch-deployment/ # OCP manifests for OpenSearch
+│   ├── granite-service/       # OCP manifests for Granite/llama.cpp
+│   └── podman/                # Podman/RHEL deployment — no OCP needed
+│       ├── podman-compose.yml # All four services
+│       ├── deploy.sh          # One-shot bootstrap for a fresh LPAR
+│       ├── manage.sh          # start/stop/status/logs/rebuild
+│       └── ingest-single.sh   # Test one Sales Manual before bulk ingest
 └── images/                    # Documentation screenshots
 ```
 
