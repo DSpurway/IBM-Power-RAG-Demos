@@ -21,8 +21,10 @@ spec:
           image: icr.io/ppc64le-oss/vllm-ppc64le:0.19.1
           imagePullPolicy: IfNotPresent
           args:
+            # Pass the HuggingFace model ID directly - vLLM downloads and caches it automatically.
+            # Do NOT pass a local path like /models/... unless the model files already exist there.
             - --model
-            - /models/granite-4.0-micro
+            - ibm-granite/granite-3.3-2b-instruct
             - --served-model-name
             - granite
             - --port=8000
@@ -38,25 +40,25 @@ spec:
               value: "auto"
             - name: VLLM_CPU_KVCACHE_SPACE
               value: "8"
-            - name: HF_HUB_OFFLINE
-              value: "0"
-            - name: HUGGING_FACE_HUB_TOKEN
-              value: ""
+            # HuggingFace cache — model downloaded here on first start (~2-5 GB)
+            - name: HF_HOME
+              value: "/hf-cache"
           readinessProbe:
             httpGet:
               path: /health
               port: 8000
               scheme: HTTP
-            initialDelaySeconds: 120
+            # Model download + load can take several minutes on first start
+            initialDelaySeconds: 180
             timeoutSeconds: 10
             periodSeconds: 20
-            failureThreshold: 12
+            failureThreshold: 18
           livenessProbe:
             httpGet:
               path: /health
               port: 8000
               scheme: HTTP
-            initialDelaySeconds: 180
+            initialDelaySeconds: 240
             timeoutSeconds: 10
             periodSeconds: 30
             failureThreshold: 6
@@ -68,10 +70,11 @@ spec:
               memory: "24Gi"
               cpu: "8"
           volumeMounts:
-            - name: models
-              mountPath: /models
+            - name: hf-cache
+              mountPath: /hf-cache
       volumes:
-        - name: models
+        # emptyDir persists for pod lifetime — model survives container restarts within the same pod
+        - name: hf-cache
           emptyDir: {}
 
 # Made with Bob
