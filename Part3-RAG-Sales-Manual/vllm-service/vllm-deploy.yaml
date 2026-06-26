@@ -1,0 +1,77 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vllm-service
+  labels:
+    app: vllm-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vllm-service
+  template:
+    metadata:
+      labels:
+        app: vllm-service
+    spec:
+      containers:
+        - name: vllm
+          # Pre-built IBM ppc64le vLLM image from IBM Container Registry (unauthenticated access)
+          # Source: https://github.com/IBM/project-ai-services/tree/main/ai-services/assets/components/llm/vllm-cpu
+          image: icr.io/ppc64le-oss/vllm-ppc64le:0.19.1
+          imagePullPolicy: IfNotPresent
+          args:
+            - --model
+            - /models/granite-4.0-micro
+            - --served-model-name
+            - granite
+            - --port=8000
+            - --max-num-batched-tokens=8192
+            - --max-model-len=8192
+            - --dtype=float32
+          ports:
+            - containerPort: 8000
+              name: http
+              protocol: TCP
+          env:
+            - name: VLLM_CPU_OMP_THREADS_BIND
+              value: "auto"
+            - name: VLLM_CPU_KVCACHE_SPACE
+              value: "8"
+            - name: HF_HUB_OFFLINE
+              value: "0"
+            - name: HUGGING_FACE_HUB_TOKEN
+              value: ""
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+              scheme: HTTP
+            initialDelaySeconds: 120
+            timeoutSeconds: 10
+            periodSeconds: 20
+            failureThreshold: 12
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+              scheme: HTTP
+            initialDelaySeconds: 180
+            timeoutSeconds: 10
+            periodSeconds: 30
+            failureThreshold: 6
+          resources:
+            requests:
+              memory: "16Gi"
+              cpu: "4"
+            limits:
+              memory: "24Gi"
+              cpu: "8"
+          volumeMounts:
+            - name: models
+              mountPath: /models
+      volumes:
+        - name: models
+          emptyDir: {}
+
+# Made with Bob

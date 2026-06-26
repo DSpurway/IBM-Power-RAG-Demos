@@ -65,13 +65,22 @@ OPENSEARCH_NUM_SHARDS = int(os.environ.get('OPENSEARCH_NUM_SHARDS', '1'))
 OPENSEARCH_USE_SSL = os.environ.get('OPENSEARCH_USE_SSL', 'false').lower() == 'true'
 
 # LLM Service Configuration
-# Granite service (for RAG - Part 3)
-GRANITE_HOST = os.environ.get('GRANITE_HOST', os.environ.get('LLAMA_HOST', 'granite-llama-service'))
+# Three LLM backends run side-by-side for comparison:
+#   granite   — llama.cpp server, POST /completion          (port 8080)
+#   tinyllama — llama.cpp server, POST /completion          (port 8080)
+#   vllm      — vLLM OpenAI-compatible, POST /v1/chat/completions (port 8000)
+
+GRANITE_HOST = os.environ.get('GRANITE_HOST', os.environ.get('LLAMA_HOST', 'granite-service'))
 GRANITE_PORT = os.environ.get('GRANITE_PORT', os.environ.get('LLAMA_PORT', '8080'))
 
-# TinyLlama service (for Part 1 - demonstrates hallucinations)
-TINYLLAMA_HOST = os.environ.get('TINYLLAMA_HOST', 'tinyllama-service')
+# TinyLlama (Part 1 - demonstrates hallucinations) — llama.cpp format
+TINYLLAMA_HOST = os.environ.get('TINYLLAMA_HOST', 'llama-service')
 TINYLLAMA_PORT = os.environ.get('TINYLLAMA_PORT', '8080')
+
+# vLLM service — OpenAI-compatible API on port 8000
+# Deploy alongside granite/tinyllama for performance comparison
+VLLM_HOST = os.environ.get('VLLM_HOST', 'vllm-service')
+VLLM_PORT = os.environ.get('VLLM_PORT', '8000')
 
 # Legacy support - default to Granite
 LLAMA_HOST = GRANITE_HOST
@@ -2109,28 +2118,47 @@ Instructions:
 Answer:"""
         
         # Step 3.4: Generate response with LLM
-        # Select LLM service based on model parameter
-        if model.lower() == 'tinyllama':
+        # Select backend by model parameter: 'granite', 'tinyllama', or 'vllm'
+        model_lower = model.lower()
+        if model_lower == 'tinyllama':
             llm_host = TINYLLAMA_HOST
             llm_port = TINYLLAMA_PORT
-            logger.info(f"Using TinyLlama model at {llm_host}:{llm_port}")
+            llm_format = 'llamacpp'
+            logger.info(f"Using TinyLlama (llama.cpp) at {llm_host}:{llm_port}")
+        elif model_lower == 'vllm':
+            llm_host = VLLM_HOST
+            llm_port = VLLM_PORT
+            llm_format = 'openai'
+            logger.info(f"Using vLLM at {llm_host}:{llm_port}")
         else:
             llm_host = GRANITE_HOST
             llm_port = GRANITE_PORT
-            logger.info(f"Using Granite model at {llm_host}:{llm_port}")
-        
-        logger.info(f"Generating RAG response with {len(reranked_hits)} chunks, temperature={temperature}, n_predict={n_predict}")
-        
-        # Call LLM service
-        llm_url = f"http://{llm_host}:{llm_port}/completion"
-        
-        payload = {
-            "prompt": rag_prompt,
-            "temperature": temperature,
-            "n_predict": n_predict,
-            "stream": stream
-        }
-        
+            llm_format = 'llamacpp'
+            logger.info(f"Using Granite (llama.cpp) at {llm_host}:{llm_port}")
+
+        logger.info(f"Generating RAG response with {len(reranked_hits)} chunks, format={llm_format}, temperature={temperature}, n_predict={n_predict}")
+
+        # Build request based on API format
+        if llm_format == 'openai':
+            # vLLM — OpenAI-compatible chat completions
+            llm_url = f"http://{llm_host}:{llm_port}/v1/chat/completions"
+            payload = {
+                "model": "granite",
+                "messages": [{"role": "user", "content": rag_prompt}],
+                "temperature": temperature,
+                "max_tokens": n_predict,
+                "stream": stream
+            }
+        else:
+            # llama.cpp native completions
+            llm_url = f"http://{llm_host}:{llm_port}/completion"
+            payload = {
+                "prompt": rag_prompt,
+                "temperature": temperature,
+                "n_predict": n_predict,
+                "stream": stream
+            }
+
         # Handle streaming response
         if stream:
             def generate_stream():
@@ -2145,19 +2173,27 @@ Answer:"""
                 except Exception as e:
                     logger.error(f"Streaming error: {e}")
                     yield f"data: {json.dumps({'error': str(e)})}\n\n"
-            
+
             return Response(generate_stream(), mimetype='text/event-stream')
-        
+
         # Non-streaming response
         response = requests.post(llm_url, json=payload, timeout=180)
         response.raise_for_status()
-        
+
         result = response.json()
-        
+
+        # Extract content from whichever format was used
+        if llm_format == 'openai':
+            content = result.get('choices', [{}])[0].get('message', {}).get('content', '')
+            timings = {}  # vLLM doesn't return llama.cpp-style timings
+        else:
+            content = result.get('content', '')
+            timings = result.get('timings', {})
+
         # Build response with transparency
         return jsonify({
             'success': True,
-            'content': result.get('content', ''),
+            'content': content,
             'query_type': query_type,
             'server_model': server_model,
             'chunks_found': len(hits),
@@ -2165,10 +2201,11 @@ Answer:"""
             'source_url': source_url,
             'source_filename': source_filename,
             'model': model,
-            'timings': result.get('timings', {}),
+            'timings': timings,
+            'llm_format': llm_format,
             'ai_services_used': ['watsonx_assistant', 'opensearch', 'reranker', 'llm'],
             'processing_method': 'full_rag_generation',
-            'llm_model': 'granite' if model.lower() != 'tinyllama' else 'tinyllama'
+            'llm_model': model_lower
         })
         
     except requests.exceptions.Timeout:

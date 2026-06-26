@@ -79,10 +79,11 @@ echo "Scraper: $SCRAPER_URL"
 echo ""
 echo "Services to deploy:"
 echo "  1. OpenSearch (Vector Database)"
-echo "  2. Granite LLM Service (Part 3)"
-echo "  3. TinyLlama LLM Service (Part 1 & 2)"
-echo "  4. RAG Backend (Consolidated)"
-echo "  5. Carbon RAG UI (Frontend)"
+echo "  2. Granite LLM Service - llama.cpp (Part 3 baseline)"
+echo "  3. TinyLlama LLM Service - llama.cpp (Part 1 & 2)"
+echo "  4. vLLM Service - OpenAI-compatible (Part 3 performance comparison)"
+echo "  5. RAG Backend (Consolidated)"
+echo "  6. Carbon RAG UI (Frontend)"
 echo ""
 read -p "Continue with deployment? (y/n): " CONFIRM
 
@@ -113,7 +114,7 @@ echo ""
 
 # Step 2: Deploy Granite LLM
 echo "=========================================="
-echo "Step 2/5: Deploying Granite LLM Service"
+echo "Step 2/6: Deploying Granite LLM Service (llama.cpp)"
 echo "=========================================="
 echo ""
 
@@ -138,7 +139,7 @@ echo ""
 
 # Step 3: Deploy TinyLlama
 echo "=========================================="
-echo "Step 3/5: Deploying TinyLlama LLM Service"
+echo "Step 3/6: Deploying TinyLlama LLM Service (llama.cpp)"
 echo "=========================================="
 echo ""
 
@@ -161,9 +162,27 @@ oc rollout status deployment/llama-service --timeout=10m
 echo "✅ TinyLlama LLM deployed"
 echo ""
 
-# Step 4: Deploy RAG Backend
+# Step 4: Deploy vLLM Service
 echo "=========================================="
-echo "Step 4/5: Deploying RAG Backend"
+echo "Step 4/6: Deploying vLLM Service (OpenAI-compatible, for perf comparison)"
+echo "=========================================="
+echo ""
+
+cd ../vllm-service
+
+oc apply -f vllm-svc.yaml
+oc apply -f vllm-deploy.yaml
+oc apply -f vllm-route.yaml
+
+echo "Waiting for vLLM service to be ready (first start downloads model ~5-10 min)..."
+oc rollout status deployment/vllm-service --timeout=20m
+
+echo "✅ vLLM service deployed"
+echo ""
+
+# Step 5: Deploy RAG Backend
+echo "=========================================="
+echo "Step 5/6: Deploying RAG Backend"
 echo "=========================================="
 echo ""
 
@@ -199,6 +218,8 @@ oc set env deployment/rag-backend \
   GRANITE_PORT=8080 \
   TINYLLAMA_HOST=llama-service \
   TINYLLAMA_PORT=8080 \
+  VLLM_HOST=vllm-service \
+  VLLM_PORT=8000 \
   SCRAPER_URL=$SCRAPER_URL \
   CORS_ORIGIN='*'
 
@@ -208,9 +229,9 @@ oc rollout status deployment/rag-backend --timeout=10m
 echo "✅ RAG Backend deployed"
 echo ""
 
-# Step 5: Deploy Carbon RAG UI
+# Step 6: Deploy Carbon RAG UI
 echo "=========================================="
-echo "Step 5/5: Deploying Carbon RAG UI"
+echo "Step 6/6: Deploying Carbon RAG UI"
 echo "=========================================="
 echo ""
 
