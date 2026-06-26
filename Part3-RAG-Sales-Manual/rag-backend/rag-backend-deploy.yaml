@@ -24,22 +24,25 @@ spec:
               name: http
               protocol: TCP
           env:
-            # Watson Assistant Configuration
+            # Watson Assistant Configuration — optional, pod starts without it
             - name: WATSON_ASSISTANT_API_KEY
               valueFrom:
                 secretKeyRef:
                   name: watson-assistant-credentials
                   key: api-key
+                  optional: true
             - name: WATSON_ASSISTANT_URL
               valueFrom:
                 secretKeyRef:
                   name: watson-assistant-credentials
                   key: url
+                  optional: true
             - name: WATSON_ASSISTANT_ID
               valueFrom:
                 secretKeyRef:
                   name: watson-assistant-credentials
                   key: assistant-id
+                  optional: true
             # OpenSearch Configuration
             - name: OPENSEARCH_HOST
               value: "opensearch-service"
@@ -49,21 +52,28 @@ spec:
               value: "admin"
             - name: OPENSEARCH_PASSWORD
               value: "admin"
-            # Granite Service (for complex RAG queries - Part 3)
+            # Granite Service — llama.cpp (Part 3 baseline)
             - name: GRANITE_HOST
               value: "granite-service"
             - name: GRANITE_PORT
               value: "8080"
-            # TinyLlama Service (for simple queries - Part 1 & 2)
+            # TinyLlama Service — llama.cpp (Part 1 & 2)
             - name: TINYLLAMA_HOST
               value: "llama-service"
             - name: TINYLLAMA_PORT
               value: "8080"
-            # Legacy support - defaults to Granite
+            # vLLM Service — OpenAI-compatible (performance comparison)
+            - name: VLLM_HOST
+              value: "vllm-service"
+            - name: VLLM_PORT
+              value: "8000"
+            # Legacy support
             - name: LLAMA_HOST
               value: "granite-service"
             - name: LLAMA_PORT
               value: "8080"
+            - name: SCRAPER_URL
+              value: "https://ibm-docs-scraper-enhanced.29bw00k1vhg4.eu-gb.codeengine.appdomain.cloud"
             - name: PDF_DIR
               value: "/app/pdfs"
             - name: CORS_ORIGIN
