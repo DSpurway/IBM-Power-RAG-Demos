@@ -68,7 +68,7 @@ spec:
               cpu: "2"
             limits:
               memory: "24Gi"
-              cpu: "8"
+              cpu: "4"
           volumeMounts:
             - name: hf-cache
               mountPath: /hf-cache
