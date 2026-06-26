@@ -21,9 +21,11 @@ RUN cmake --build build --config Release
 EXPOSE 8080
 
 RUN mkdir -p /models
-# Granite 4.0 Micro model using the same known-good container pattern as TinyLlama
-RUN wget --quiet https://huggingface.co/ibm-granite/granite-4.0-micro-GGUF/resolve/main/granite-4.0-micro-Q4_K_M.gguf -O /models/granite-4.0-micro-Q4_K_M.gguf
+# Granite 3.3 2B Instruct - Q4_K_M quantised GGUF
+# Matches the model served by vllm-service (ibm-granite/granite-3.3-2b-instruct)
+# for a fair llama.cpp vs vLLM performance comparison on the same model family
+RUN wget --quiet https://huggingface.co/bartowski/granite-3.3-2b-instruct-GGUF/resolve/main/granite-3.3-2b-instruct-Q4_K_M.gguf -O /models/granite-3.3-2b-instruct-Q4_K_M.gguf
 
-ENTRYPOINT [ "/llama.cpp/build/bin/llama-server", "-m", "/models/granite-4.0-micro-Q4_K_M.gguf", "--host", "0.0.0.0" ]
+ENTRYPOINT [ "/llama.cpp/build/bin/llama-server", "-m", "/models/granite-3.3-2b-instruct-Q4_K_M.gguf", "--host", "0.0.0.0" ]
 
 # Made with Bob
