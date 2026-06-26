@@ -21,10 +21,10 @@ RUN cmake --build build --config Release
 EXPOSE 8080
 
 RUN mkdir -p /models
-# Granite 3.3 2B Instruct - Q4_K_M quantised GGUF
+# Granite 3.3 2B Instruct - Q4_K_M quantised GGUF (official IBM release)
 # Matches the model served by vllm-service (ibm-granite/granite-3.3-2b-instruct)
 # for a fair llama.cpp vs vLLM performance comparison on the same model family
-RUN wget --quiet https://huggingface.co/bartowski/granite-3.3-2b-instruct-GGUF/resolve/main/granite-3.3-2b-instruct-Q4_K_M.gguf -O /models/granite-3.3-2b-instruct-Q4_K_M.gguf
+RUN wget --quiet https://huggingface.co/ibm-granite/granite-3.3-2b-instruct-GGUF/resolve/main/granite-3.3-2b-instruct-Q4_K_M.gguf -O /models/granite-3.3-2b-instruct-Q4_K_M.gguf
 
 ENTRYPOINT [ "/llama.cpp/build/bin/llama-server", "-m", "/models/granite-3.3-2b-instruct-Q4_K_M.gguf", "--host", "0.0.0.0" ]
 
