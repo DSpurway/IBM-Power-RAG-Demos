@@ -2241,6 +2241,56 @@ bulk_ingestion_state = {
     'started_at': None
 }
 
+# Lightweight IBM page used to verify Selenium is fully ready after a cold start.
+# Dynamic enough to exercise Chromium but much smaller than a full Sales Manual.
+SCRAPER_PROBE_URL = "https://www.ibm.com/support/pages/ibm-power-announcements"
+
+def _wait_for_scraper_ready(scraper_url, max_attempts=3, wait_seconds=10):
+    """
+    Ensure the Code Engine scraper is genuinely ready — not just the container,
+    but Selenium/Chromium inside it.
+
+    Strategy:
+      1. Hit /health to wake the container (fast, no Selenium involved).
+      2. Probe with a lightweight known-dynamic IBM page up to max_attempts times.
+         A successful scrape confirms Chromium has fully initialised.
+
+    Returns True if ready, False if all attempts failed (caller should still
+    proceed — the real scrape has its own retry logic).
+    """
+    import time
+
+    # Step 1: wake the container
+    try:
+        requests.get(f"{scraper_url}/health", timeout=30)
+        logger.info(f"[Scraper] Container is up at {scraper_url}")
+    except requests.exceptions.RequestException as e:
+        logger.warning(f"[Scraper] Health check failed: {e} — container may still be starting")
+
+    # Step 2: probe until Selenium is ready
+    for attempt in range(1, max_attempts + 1):
+        logger.info(f"[Scraper] Selenium readiness probe attempt {attempt}/{max_attempts} "
+                    f"(waiting {wait_seconds}s before probe)...")
+        time.sleep(wait_seconds)
+        try:
+            resp = requests.get(
+                f"{scraper_url}/scrape",
+                params={"url": SCRAPER_PROBE_URL, "wait": 5},
+                timeout=60
+            )
+            if resp.status_code == 200 and resp.json().get("success"):
+                logger.info(f"[Scraper] ✅ Selenium ready after probe attempt {attempt}")
+                return True
+            logger.warning(f"[Scraper] Probe attempt {attempt} returned success=False: "
+                           f"{resp.json().get('error', 'unknown')}")
+        except requests.exceptions.RequestException as e:
+            logger.warning(f"[Scraper] Probe attempt {attempt} failed: {e}")
+
+    logger.warning("[Scraper] ⚠️  Scraper not confirmed ready after all probe attempts — "
+                   "proceeding anyway, real scrape has its own retry logic")
+    return False
+
+
 @app.route('/api/ingest-sales-manual', methods=['POST'])
 def ingest_sales_manual():
     """
@@ -2266,8 +2316,9 @@ def ingest_sales_manual():
         # Update bulk ingestion state
         bulk_ingestion_state['current_server'] = f"{server_model} ({mtm})"
         
-        # Call Code Engine scraper service with retry logic
+        # Ensure scraper container AND Selenium are ready before the real scrape
         scraper_url = os.environ.get('SCRAPER_URL', 'http://host.docker.internal:5000')
+        _wait_for_scraper_ready(scraper_url)
         
         logger.info(f"Calling scraper at {scraper_url}/scrape?url={sales_manual_url}")
         
@@ -2485,23 +2536,10 @@ def start_bulk_ingestion():
                 'total': bulk_ingestion_state['total']
             }), 409  # Conflict
         
-        # Warm up the Code Engine scraper before starting bulk ingestion
+        # Ensure scraper container AND Selenium are ready before bulk ingestion starts
         scraper_url = os.environ.get('SCRAPER_URL', 'http://host.docker.internal:5000')
-        logger.info(f"[Bulk Ingestion] Warming up scraper at {scraper_url}...")
-        
-        try:
-            # Call health endpoint to wake up Code Engine if it's cold
-            health_response = requests.get(f"{scraper_url}/health", timeout=30)
-            if health_response.status_code == 200:
-                logger.info("[Bulk Ingestion] ✅ Scraper is warm and ready")
-            else:
-                logger.warning(f"[Bulk Ingestion] Scraper health check returned {health_response.status_code}, proceeding anyway")
-        except requests.exceptions.RequestException as e:
-            logger.warning(f"[Bulk Ingestion] Scraper health check failed: {e}, proceeding anyway")
-        
-        # Wait a moment to ensure scraper is fully ready
-        import time
-        time.sleep(2)
+        logger.info(f"[Bulk Ingestion] Waiting for scraper to be fully ready at {scraper_url}...")
+        _wait_for_scraper_ready(scraper_url)
         
         # Server list with MTM and URLs - ordered by processor generation (Power11 -> Power10 -> Power9)
         # Within each generation: Enterprise first, then Scale-out, then others (largest to smallest)
