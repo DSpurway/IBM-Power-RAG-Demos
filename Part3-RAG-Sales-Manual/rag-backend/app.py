@@ -2020,7 +2020,7 @@ def generate():
                     "size": 1,
                     "_source": ["text", "metadata"],
                     "query": {
-                        "term": {"metadata.feature_code": feature_code}
+                        "term": {"metadata.feature_code.keyword": feature_code}
                     }
                 }
             )
