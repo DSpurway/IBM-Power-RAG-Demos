@@ -1994,11 +1994,19 @@ def generate():
         # If the query names a specific feature code (e.g. #EFP1, (#EFP1), EFP1),
         # skip semantic search entirely and hit OpenSearch with a metadata term
         # query. This is exact — "is about EFP1" not "mentions EFP1".
-        feature_code_match = re.search(r'#?([A-Z0-9]{4})\b', prompt, re.IGNORECASE)
-        # Only treat as a feature code lookup if it looks like a feature code query
+        # Match feature code in order of specificity:
+        #   1. (#EFP1)  — parenthesised form
+        #   2. #EFP1    — hash-prefixed (most common in user queries)
+        #   3. "feature code EFP1" / "feature code 0010" — bare code after keyword
+        # Do NOT use #?XXXX — that matches any 4-letter word like "WHAT"
+        feature_code_match = (
+            re.search(r'\(#([A-Z0-9]{4})\)', prompt, re.IGNORECASE) or
+            re.search(r'#([A-Z0-9]{4})\b', prompt, re.IGNORECASE) or
+            re.search(r'(?:feature\s+code\s+)([A-Z0-9]{4})\b', prompt, re.IGNORECASE)
+        )
+        # Only treat as a feature code lookup if the query looks like one
         feature_code_query_patterns = [
-            r'\bfeature\s+code\b', r'\bfeature\s+#', r'\(#[A-Z0-9]{4}\)',
-            r'\bwhat\s+is\s+#[A-Z0-9]{4}\b', r'\bwhat\s+is\s+feature\b',
+            r'\bfeature\s+code\b', r'#[A-Z0-9]{4}\b', r'\(#[A-Z0-9]{4}\)',
         ]
         is_feature_code_query = feature_code_match and any(
             re.search(p, prompt, re.IGNORECASE) for p in feature_code_query_patterns
