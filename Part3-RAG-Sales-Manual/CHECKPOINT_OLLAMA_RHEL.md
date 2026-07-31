@@ -1,6 +1,6 @@
 # Ollama RHEL/Power Checkpoint
 
-## Current State (31 July 2026 — end of session 2)
+## Current State (31 July 2026 — end of session 2, part 2)
 
 All four services running healthy on `p1286-pvm1.p1286.cecc.ihost.com`:
 
@@ -21,58 +21,37 @@ Ports: UI `3001`, backend `8081`, Ollama `11434`, OpenSearch `9200`
 ## Latest Commit on Host
 
 ```
-5319942 feat: feature code direct lookup with tight LLM prompt + raw_chunk in response
+d7dd905 fix: use metadata.feature_code.keyword for term query
 ```
 
-**This commit has been pushed to GitHub but NOT yet pulled/built on the host.**
+**All commits are pulled and running on the host. ✅**
 
-### Next action on host (first thing to do next session):
+### Feature code direct lookup — CONFIRMED WORKING ✅
+
+```json
+{
+  "processing_method": "feature_code_direct_lookup",
+  "chunks_found": 1,
+  "chunks_used[0].metadata": {
+    "chunk_strategy": "structured_section",
+    "chunker_version": "1.1.0",
+    "feature_code": "EFP1",
+    "is_withdrawn": true,
+    "withdrawal_date": "January 12, 2024"
+  }
+}
+```
+
+### Next action on host (start of next session):
+
+No rebuild or re-ingest needed — system is fully up to date.
+
+Verify services are still running:
 
 ```bash
-cd ~/IBM-Power-RAG-Demos
-git pull origin main
-cd Part3-RAG-Sales-Manual/podman
-~/.local/bin/podman-compose --env-file .env build rag-backend
-podman rm -f carbon-rag-ui && podman rm -f rag-backend
-~/.local/bin/podman-compose --env-file .env up -d rag-backend carbon-ui
-sleep 25
 curl -s http://127.0.0.1:8081/health | python3 -m json.tool
+curl -s http://127.0.0.1:8081/api/collections | python3 -m json.tool
 ```
-
-Then re-ingest E980 (sections fix needs a fresh ingest):
-
-```bash
-curl -s -X DELETE http://127.0.0.1:8081/api/collections/rag_mtm_9080_m9s | python3 -m json.tool
-curl -s --max-time 300 -X POST http://127.0.0.1:8081/api/ingest-sales-manual \
-  -H "Content-Type: application/json" \
-  -d '{
-    "mtm": "9080-M9S",
-    "server_model": "E980",
-    "server_name": "IBM Power System E980",
-    "processor": "POWER9",
-    "url": "https://www.ibm.com/docs/en/announcements/power-system-e980-9080-m9s"
-  }' | python3 -m json.tool
-```
-
-Then test feature code direct lookup:
-
-```bash
-curl -s -X POST http://127.0.0.1:8081/api/generate \
-  -H "Content-Type: application/json" \
-  -d '{
-    "prompt": "What is feature code #EFP1 on the IBM Power E980?",
-    "model": "ollama",
-    "server_mtm": "9080-M9S"
-  }' | python3 -m json.tool
-```
-
-Expected:
-- `processing_method: "feature_code_direct_lookup"`
-- `raw_chunk` contains the full `(#EFP1)` section text
-- `content` is LLM answer constrained to that chunk
-- `chunks_used[0].metadata.is_withdrawn: true`
-- `chunks_used[0].metadata.withdrawal_date: "January 12, 2024"`
-- `chunks_used[0].metadata.chunk_strategy: "structured_section"` ← confirms sections fix worked
 
 ## Watson Assistant
 
@@ -114,15 +93,12 @@ Watson is confirmed working — session created, `Check_Date` intent detected at
 - `chunker_version: "1.1.0"` on all chunks
 - OpenSearch on named volume (`opensearch-data`) — persists across restarts
 
-**Note**: Current ingested data used the sections fix but NOT the latest build (5319942).
-A fresh re-ingest is needed next session to pick up all fixes together.
-
 ## Immediate Next Steps (start of next session)
 
-1. Pull, rebuild, re-ingest (commands above)
-2. Validate `chunk_strategy: "structured_section"` on feature code chunks
-3. Test feature code direct lookup end-to-end
-4. If chunking looks good — consider bulk ingestion of all servers
+1. Verify services healthy and E980 collection present (commands above)
+2. Consider bulk ingestion of remaining servers
+3. Test general RAG queries on E980 now that search prompt stripping is in place
+4. Explore raw_chunk display in the Carbon UI
 
 ## Query Routing Summary (current state)
 
