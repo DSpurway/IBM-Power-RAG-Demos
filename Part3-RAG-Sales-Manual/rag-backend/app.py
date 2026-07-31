@@ -1667,7 +1667,6 @@ def generate():
             category_hits = category_response['hits']['hits']
             
             # Extract feature codes from the lists
-            import re
             processor_codes = set()
             memory_codes = set()
             
@@ -1875,7 +1874,6 @@ def generate():
             category_hits = category_response['hits']['hits']
             
             # Extract feature codes from the lists
-            import re
             processor_codes = set()
             memory_codes = set()
             
