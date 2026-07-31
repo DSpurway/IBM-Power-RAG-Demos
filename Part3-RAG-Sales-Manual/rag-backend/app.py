@@ -2443,7 +2443,8 @@ def ingest_sales_manual():
             'page_title': f"{server_name} Sales Manual",
             'server_model': server_model,
             'mtm': mtm,
-            'full_text': scraper_data.get('full_text', ''),  # Pass full_text directly
+            'full_text': scraper_data.get('full_text', ''),
+            'sections': scraper_data.get('sections', []),  # Pass structured sections so chunker uses headings not inline refs
             'scraped_at': datetime.now().isoformat()
         }
         
