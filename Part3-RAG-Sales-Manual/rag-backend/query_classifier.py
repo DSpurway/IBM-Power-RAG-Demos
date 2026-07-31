@@ -58,12 +58,18 @@ class QueryClassifier:
         r"show.*activation",
     ]
     
-    # Patterns for feature availability queries
+    # Patterns for feature code queries — availability, withdrawal, AND description
+    # Matches both "(#0010)" and "0010" and "feature code 0010" styles
+    _FC = r"#?[A-Z0-9]{4}"  # feature code token: optional # + 4 alphanumeric chars
     FEATURE_PATTERNS = [
-        r"is\s+(?:feature\s+)?(?:code\s+)?[A-Z0-9]{4}\s+(?:still\s+)?available",
-        r"can\s+(?:i|we)\s+(?:still\s+)?order\s+(?:feature\s+)?(?:code\s+)?[A-Z0-9]{4}",
-        r"(?:feature\s+)?(?:code\s+)?[A-Z0-9]{4}\s+(?:withdrawal|discontinued)",
-        r"when\s+(?:was|is)\s+(?:feature\s+)?(?:code\s+)?[A-Z0-9]{4}\s+withdrawn",
+        rf"is\s+(?:feature\s+)?(?:code\s+)?{_FC}\s+(?:still\s+)?available",
+        rf"can\s+(?:i|we)\s+(?:still\s+)?order\s+(?:feature\s+)?(?:code\s+)?{_FC}",
+        rf"(?:feature\s+)?(?:code\s+)?{_FC}\s+(?:withdrawal|discontinued)",
+        rf"when\s+(?:was|is)\s+(?:feature\s+)?(?:code\s+)?{_FC}\s+withdrawn",
+        # "What is feature code #0010 / 0010 / (#0010)"
+        rf"what\s+is\s+(?:feature\s+)?(?:code\s+)?{_FC}",
+        rf"(?:tell|describe|explain)\s+.*?(?:feature\s+)?(?:code\s+)?{_FC}",
+        rf"(?:feature\s+)?(?:code\s+)?{_FC}.*?(?:description|details?|info)",
     ]
     
     # Server model patterns
@@ -195,21 +201,27 @@ class QueryClassifier:
     
     def extract_feature_code(self, query: str) -> Optional[str]:
         """
-        Extract feature code from query
+        Extract feature code from query.
+        Handles all common user formats:
+          (#0010)  #0010  0010  feature code 0010  feature code #0010
         
-        Args:
-            query: User query string
-            
         Returns:
-            Feature code (e.g., "EFA1") or None
+            Feature code without # prefix, uppercased (e.g., "0010", "EFA1") or None
         """
-        # Look for 4-character alphanumeric codes
-        match = re.search(r'\b([A-Z0-9]{4})\b', query, re.IGNORECASE)
+        # Prefer explicit "(#XXXX)" or "#XXXX" form first
+        match = re.search(r'\(#([A-Z0-9]{4})\)', query, re.IGNORECASE)
+        if not match:
+            match = re.search(r'#([A-Z0-9]{4})\b', query, re.IGNORECASE)
+        # Fall back to bare 4-char code after "feature code" or "code"
+        if not match:
+            match = re.search(r'(?:feature\s+)?code\s+([A-Z0-9]{4})\b', query, re.IGNORECASE)
+        # Last resort: standalone 4-char alphanumeric word
+        if not match:
+            match = re.search(r'\b([A-Z0-9]{4})\b', query, re.IGNORECASE)
         if match:
             code = match.group(1).upper()
             logger.info(f"Extracted feature code: {code}")
             return code
-        
         return None
     
     def get_query_intent(self, query: str) -> Dict[str, any]:  # type: ignore

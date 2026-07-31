@@ -1991,9 +1991,32 @@ def generate():
                 'processing_method': 'rag_retrieval_failed'
             }), 404
         
+        # Strip server/MTM tokens from the search query before hitting OpenSearch.
+        # server_model and server_mtm are already resolved — they selected this
+        # collection. Leaving them in the embedding/BM25 query dilutes the actual
+        # topic signal (e.g. feature code #0010, memory, processor).
+        # We strip the known exact values plus common surrounding phrases.
+        strip_terms = []
+        if server_mtm:
+            strip_terms.append(re.escape(server_mtm))           # 9080-M9S
+        if server_model:
+            strip_terms.append(re.escape(server_model))         # E980
+        # Also strip "IBM Power System", "IBM Power", "Power System" wrappers
+        strip_terms += [
+            r'IBM\s+Power\s+System',
+            r'IBM\s+Power',
+            r'Power\s+System',
+        ]
+        search_prompt = prompt
+        for term in strip_terms:
+            search_prompt = re.sub(term, '', search_prompt, flags=re.IGNORECASE)
+        # Collapse multiple spaces left by stripping
+        search_prompt = re.sub(r'\s{2,}', ' ', search_prompt).strip()
+        logger.info(f"RAG search prompt (stripped): '{search_prompt}' (original: '{prompt[:80]}')")
+
         # Generate query embedding
-        query_vector = embeddings.embed_query(prompt)
-        
+        query_vector = embeddings.embed_query(search_prompt)
+
         # Retrieve chunks using hybrid search (with fallback to dense)
         k = 3  # Number of chunks to retrieve (reduced for faster LLM response)
         try:
@@ -2012,7 +2035,7 @@ def generate():
                                 }
                             },
                             {
-                                "match": {"text": prompt}
+                                "match": {"text": search_prompt}
                             }
                         ]
                     }
