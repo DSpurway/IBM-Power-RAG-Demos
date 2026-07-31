@@ -90,6 +90,8 @@ services:
       - OLLAMA_PORT=11434
       # Code Engine scraper — Selenium-based IBM docs scraper
       - SCRAPER_URL=https://ibm-docs-scraper-enhanced.29bw00k1vhg4.eu-gb.codeengine.appdomain.cloud
+      # Ollama model name — must match what is pulled into Ollama
+      - OLLAMA_MODEL=granite4:latest
       # Watson Assistant (optional — leave empty to disable)
       - WATSON_ASSISTANT_API_KEY=${WATSON_ASSISTANT_API_KEY:-}
       - WATSON_ASSISTANT_URL=${WATSON_ASSISTANT_URL:-}

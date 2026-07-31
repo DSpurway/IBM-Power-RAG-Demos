@@ -2138,7 +2138,7 @@ Answer:"""
         elif model_lower == 'ollama':
             llm_host = OLLAMA_HOST
             llm_port = OLLAMA_PORT
-            llm_format = 'openai'
+            llm_format = 'ollama'
             logger.info(f"Using Ollama at {llm_host}:{llm_port}")
         else:
             llm_host = GRANITE_HOST
@@ -2149,7 +2149,19 @@ Answer:"""
         logger.info(f"Generating RAG response with {len(reranked_hits)} chunks, format={llm_format}, temperature={temperature}, n_predict={n_predict}")
 
         # Build request based on API format
-        if llm_format == 'openai':
+        if llm_format == 'ollama':
+            # Ollama native API
+            llm_url = f"http://{llm_host}:{llm_port}/api/chat"
+            payload = {
+                "model": os.environ.get('OLLAMA_MODEL', 'granite4:latest'),
+                "messages": [{"role": "user", "content": rag_prompt}],
+                "stream": False,
+                "options": {
+                    "temperature": temperature,
+                    "num_predict": n_predict
+                }
+            }
+        elif llm_format == 'openai':
             # vLLM — OpenAI-compatible chat completions
             llm_url = f"http://{llm_host}:{llm_port}/v1/chat/completions"
             payload = {
@@ -2193,10 +2205,15 @@ Answer:"""
         result = response.json()
 
         # Extract content from whichever format was used
-        if llm_format == 'openai':
+        if llm_format == 'ollama':
+            # Ollama /api/chat returns {"message": {"role": "assistant", "content": "..."}}
+            content = result.get('message', {}).get('content', '')
+            timings = {}
+        elif llm_format == 'openai':
             content = result.get('choices', [{}])[0].get('message', {}).get('content', '')
-            timings = {}  # vLLM doesn't return llama.cpp-style timings
+            timings = {}
         else:
+            # llama.cpp native
             content = result.get('content', '')
             timings = result.get('timings', {})
 
