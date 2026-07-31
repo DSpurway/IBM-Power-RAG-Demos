@@ -1990,6 +1990,97 @@ def generate():
                 'processing_method': 'rag_retrieval_failed'
             }), 404
         
+        # ── Feature code direct lookup ───────────────────────────────────────────
+        # If the query names a specific feature code (e.g. #EFP1, (#EFP1), EFP1),
+        # skip semantic search entirely and hit OpenSearch with a metadata term
+        # query. This is exact — "is about EFP1" not "mentions EFP1".
+        feature_code_match = re.search(r'#?([A-Z0-9]{4})\b', prompt, re.IGNORECASE)
+        # Only treat as a feature code lookup if it looks like a feature code query
+        feature_code_query_patterns = [
+            r'\bfeature\s+code\b', r'\bfeature\s+#', r'\(#[A-Z0-9]{4}\)',
+            r'\bwhat\s+is\s+#[A-Z0-9]{4}\b', r'\bwhat\s+is\s+feature\b',
+        ]
+        is_feature_code_query = feature_code_match and any(
+            re.search(p, prompt, re.IGNORECASE) for p in feature_code_query_patterns
+        )
+        if is_feature_code_query:
+            feature_code = feature_code_match.group(1).upper()
+            logger.info(f"Feature code direct lookup: {feature_code} in {index_name}")
+            fc_response = client.search(
+                index=index_name,
+                body={
+                    "size": 1,
+                    "_source": ["text", "metadata"],
+                    "query": {
+                        "term": {"metadata.feature_code": feature_code}
+                    }
+                }
+            )
+            fc_hits = fc_response['hits']['hits']
+            if fc_hits:
+                fc_source = fc_hits[0]['_source']
+                fc_meta = fc_source.get('metadata', {})
+                raw_chunk = fc_source.get('text', '')
+
+                # Build a tight, constrained prompt — LLM must answer only from
+                # the single chunk. No padding, no external context.
+                fc_prompt = (
+                    f"You are a technical assistant for IBM Power Systems sales manuals.\n"
+                    f"Answer the question using ONLY the feature description below.\n"
+                    f"Do not add any information not present in the description.\n"
+                    f"If the feature is withdrawn, state clearly when it was withdrawn.\n\n"
+                    f"Feature description:\n{raw_chunk}\n\n"
+                    f"Question: {prompt}\n\n"
+                    f"Answer:"
+                )
+
+                # Call Ollama with the tight prompt
+                ai_services = ['watsonx_assistant', 'opensearch']
+                llm_answer = None
+                try:
+                    llm_url = f"http://{OLLAMA_HOST}:{OLLAMA_PORT}/api/chat"
+                    llm_payload = {
+                        "model": os.environ.get('OLLAMA_MODEL', 'granite4:latest'),
+                        "messages": [{"role": "user", "content": fc_prompt}],
+                        "stream": False,
+                        "options": {"temperature": 0.1, "num_predict": 300}
+                    }
+                    llm_resp = requests.post(llm_url, json=llm_payload, timeout=60)
+                    if llm_resp.status_code == 200:
+                        llm_answer = llm_resp.json()['message']['content'].strip()
+                        ai_services.append('llm')
+                        logger.info(f"Feature code LLM answer generated for {feature_code}")
+                except Exception as llm_err:
+                    logger.warning(f"LLM call failed for feature code lookup: {llm_err} — returning raw chunk only")
+
+                return jsonify({
+                    'success': True,
+                    'content': llm_answer or raw_chunk,   # LLM answer, or raw chunk if LLM failed
+                    'raw_chunk': raw_chunk,                # Always return raw chunk for human verification
+                    'query_type': 'feature_code_lookup',
+                    'processing_method': 'feature_code_direct_lookup',
+                    'server_model': server_model,
+                    'source_url': fc_meta.get('source'),
+                    'chunks_found': 1,
+                    'chunks_used': [{
+                        'text': raw_chunk,
+                        'score': 1.0,
+                        'metadata': {
+                            'section': fc_meta.get('section_title', 'Feature descriptions'),
+                            'section_type': fc_meta.get('section_type', 'feature_code'),
+                            'feature_code': fc_meta.get('feature_code'),
+                            'feature_name': fc_meta.get('feature_name', ''),
+                            'is_withdrawn': fc_meta.get('is_withdrawn', False),
+                            'withdrawal_date': fc_meta.get('withdrawal_date'),
+                            'chunk_strategy': fc_meta.get('chunk_strategy'),
+                            'chunker_version': fc_meta.get('chunker_version'),
+                        }
+                    }],
+                    'ai_services_used': ai_services,
+                })
+            else:
+                logger.info(f"Feature code {feature_code} not found in {index_name} — falling through to RAG")
+
         # Strip server/MTM tokens from the search query before hitting OpenSearch.
         # server_model and server_mtm are already resolved — they selected this
         # collection. Leaving them in the embedding/BM25 query dilutes the actual
@@ -2088,14 +2179,26 @@ def generate():
                 source_url = metadata['source']
                 source_filename = metadata.get('filename') or metadata.get('source_filename')
             
-            # Collect chunk information for transparency
+            # Collect chunk information for transparency — include key feature metadata
+            chunk_meta = {
+                'section': metadata.get('section_title', 'Unknown'),
+                'section_type': metadata.get('section_type', 'Unknown'),
+                'chunk_strategy': metadata.get('chunk_strategy', 'Unknown'),
+                'chunker_version': metadata.get('chunker_version', 'Unknown'),
+            }
+            # Add feature-code specific fields when present
+            if metadata.get('feature_code'):
+                chunk_meta['feature_code'] = metadata['feature_code']
+                chunk_meta['feature_name'] = metadata.get('feature_name', '')
+                chunk_meta['is_withdrawn'] = metadata.get('is_withdrawn', False)
+                chunk_meta['withdrawal_date'] = metadata.get('withdrawal_date')
+                chunk_meta['csu'] = metadata.get('csu')
+                chunk_meta['minimum_required'] = metadata.get('minimum_required')
+                chunk_meta['maximum_allowed'] = metadata.get('maximum_allowed')
             chunks_used.append({
                 'text': source.get("text", "")[:500] + "..." if len(source.get("text", "")) > 500 else source.get("text", ""),
                 'score': float(hit.get("_score", 0)),
-                'metadata': {
-                    'section': metadata.get('section_title', 'Unknown'),
-                    'section_type': metadata.get('section_type', 'Unknown')
-                }
+                'metadata': chunk_meta
             })
         
         # Step 3.3: Build RAG prompt with context
