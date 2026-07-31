@@ -68,7 +68,8 @@ OPENSEARCH_USE_SSL = os.environ.get('OPENSEARCH_USE_SSL', 'false').lower() == 't
 # Three LLM backends run side-by-side for comparison:
 #   granite   — llama.cpp server, POST /completion          (port 8080)
 #   tinyllama — llama.cpp server, POST /completion          (port 8080)
-#   vllm      — vLLM OpenAI-compatible, POST /v1/chat/completions (port 8000)
+#   vllm      — vLLM/OpenAI-compatible, POST /v1/chat/completions (port 8000)
+#   ollama    — Ollama/OpenAI-compatible, POST /v1/chat/completions (port 11434)
 
 GRANITE_HOST = os.environ.get('GRANITE_HOST', os.environ.get('LLAMA_HOST', 'granite-service'))
 GRANITE_PORT = os.environ.get('GRANITE_PORT', os.environ.get('LLAMA_PORT', '8080'))
@@ -81,6 +82,10 @@ TINYLLAMA_PORT = os.environ.get('TINYLLAMA_PORT', '8080')
 # Deploy alongside granite/tinyllama for performance comparison
 VLLM_HOST = os.environ.get('VLLM_HOST', 'vllm-service')
 VLLM_PORT = os.environ.get('VLLM_PORT', '8000')
+
+# Ollama service — OpenAI-compatible API on port 11434
+OLLAMA_HOST = os.environ.get('OLLAMA_HOST', 'ollama-service')
+OLLAMA_PORT = os.environ.get('OLLAMA_PORT', '11434')
 
 # Legacy support - default to Granite
 LLAMA_HOST = GRANITE_HOST
@@ -2118,7 +2123,7 @@ Instructions:
 Answer:"""
         
         # Step 3.4: Generate response with LLM
-        # Select backend by model parameter: 'granite', 'tinyllama', or 'vllm'
+        # Select backend by model parameter: 'granite', 'tinyllama', 'vllm', or 'ollama'
         model_lower = model.lower()
         if model_lower == 'tinyllama':
             llm_host = TINYLLAMA_HOST
@@ -2130,6 +2135,11 @@ Answer:"""
             llm_port = VLLM_PORT
             llm_format = 'openai'
             logger.info(f"Using vLLM at {llm_host}:{llm_port}")
+        elif model_lower == 'ollama':
+            llm_host = OLLAMA_HOST
+            llm_port = OLLAMA_PORT
+            llm_format = 'openai'
+            logger.info(f"Using Ollama at {llm_host}:{llm_port}")
         else:
             llm_host = GRANITE_HOST
             llm_port = GRANITE_PORT
@@ -2724,9 +2734,12 @@ def health():
         logger.error(f"OpenSearch health check failed: {e}")
         opensearch_status = "disconnected"
     
-    # Check LLM service
+    # Check LLM service — Ollama exposes /api/version; llama.cpp exposes /health
     try:
-        llm_url = f"http://{LLAMA_HOST}:{LLAMA_PORT}/health"
+        if os.environ.get('OLLAMA_HOST'):
+            llm_url = f"http://{OLLAMA_HOST}:{OLLAMA_PORT}/api/version"
+        else:
+            llm_url = f"http://{LLAMA_HOST}:{LLAMA_PORT}/health"
         response = requests.get(llm_url, timeout=5)
         llm_status = "connected" if response.status_code == 200 else "disconnected"
     except:

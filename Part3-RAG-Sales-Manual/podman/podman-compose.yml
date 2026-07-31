@@ -47,31 +47,22 @@ services:
       retries: 5
     restart: unless-stopped
 
-  # ── vLLM (IBM project-ai-services ppc64le CPU image) ─────────────────────────
-  # Source: https://github.com/IBM/project-ai-services/tree/main/ai-services/assets/components/llm/vllm-cpu
-  # Exposes an OpenAI-compatible API on port 8000.
-  # Model is downloaded to the shared model-cache volume on first start.
-  vllm:
-    image: ${VLLM_IMAGE:-ghcr.io/ibm/project-ai-services/vllm-cpu:latest}
-    container_name: vllm-service
-    environment:
-      - MODEL_ID=${MODEL_ID:-ibm-granite/granite-3.3-8b-instruct}
-      - VLLM_HOST=0.0.0.0
-      - VLLM_PORT=8000
-      # CPU-only — no GPU flags needed on ppc64le LPAR
-      - VLLM_WORKER_USE_RAY=0
-      - HF_HOME=/models
+  # ── Ollama (IBM ppc64le image) ────────────────────────────────────────────────
+  # Exposes both native and OpenAI-compatible APIs.
+  ollama:
+    image: ${OLLAMA_IMAGE:-icr.io/ppc64le-oss/ollama-ppc64le:v0.17.6}
+    container_name: ollama-service
     ports:
-      - "8000:8000"
+      - "11434:11434"
     volumes:
-      - model-cache:/models
+      - model-cache:/root/.ollama/models
     networks:
       - rag-net
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8000/health || exit 1"]
-      interval: 60s
-      timeout: 15s
-      start_period: 300s   # model download can take several minutes
+      test: ["CMD-SHELL", "curl -sf http://localhost:11434/api/version || exit 1"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
       retries: 5
     restart: unless-stopped
 
@@ -90,11 +81,13 @@ services:
       - OPENSEARCH_USERNAME=admin
       - OPENSEARCH_PASSWORD=admin
       - OPENSEARCH_DB_PREFIX=rag
-      # vLLM replaces llama.cpp — same OpenAI-compatible API, different port
-      - GRANITE_HOST=vllm-service
-      - GRANITE_PORT=8000
-      - LLAMA_HOST=vllm-service
-      - LLAMA_PORT=8000
+      # Ollama replaces llama.cpp — OpenAI-compatible API on port 11434
+      - GRANITE_HOST=ollama-service
+      - GRANITE_PORT=11434
+      - LLAMA_HOST=ollama-service
+      - LLAMA_PORT=11434
+      - OLLAMA_HOST=ollama-service
+      - OLLAMA_PORT=11434
       # Watson Assistant (optional — leave empty to disable)
       - WATSON_ASSISTANT_API_KEY=${WATSON_ASSISTANT_API_KEY:-}
       - WATSON_ASSISTANT_URL=${WATSON_ASSISTANT_URL:-}
@@ -103,7 +96,7 @@ services:
       - CORS_ORIGIN=*
       - PDF_DIR=/app/pdfs
     ports:
-      - "8080:8080"
+      - "8081:8080"
     networks:
       - rag-net
     depends_on:
@@ -131,7 +124,7 @@ services:
       - NODE_ENV=production
       - PORT=3000
     ports:
-      - "3000:3000"
+      - "3001:3000"
     networks:
       - rag-net
     depends_on:

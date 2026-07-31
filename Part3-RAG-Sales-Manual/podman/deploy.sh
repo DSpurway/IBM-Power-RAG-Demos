@@ -7,8 +7,8 @@
 # and starts all services.
 #
 # Usage (on the RHEL LPAR):
-#   git clone https://github.com/EMEA-AI-SQUAD/RAG-with-Notebook.git
-#   cd RAG-with-Notebook/Part3-RAG-Sales-Manual/podman
+#   git clone https://github.com/DSpurway/IBM-Power-RAG-Demos.git
+#   cd IBM-Power-RAG-Demos/Part3-RAG-Sales-Manual/podman
 #   cp env.example .env          # edit .env if needed (Watson creds, model choice)
 #   chmod +x deploy.sh manage.sh ingest-single.sh
 #   ./deploy.sh

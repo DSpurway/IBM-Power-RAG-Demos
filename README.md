@@ -47,7 +47,7 @@ This repository contains three progressive demonstrations, with two deployment p
 3. **Load and Query Sales Manuals** — Interactive demo
 
 **If you only have a RHEL LPAR:**
-1. Clone the repo on the LPAR and run `Part3-RAG-Sales-Manual/podman/deploy.sh` — ~20 minutes
+1. Clone `https://github.com/DSpurway/IBM-Power-RAG-Demos` on the LPAR and run `Part3-RAG-Sales-Manual/podman/deploy.sh` — ~20 minutes
 2. **Load and Query Sales Manuals** — Interactive demo
 
 See [Part3-RAG-Sales-Manual/podman/README.md](Part3-RAG-Sales-Manual/podman/README.md) for the Podman deployment guide.

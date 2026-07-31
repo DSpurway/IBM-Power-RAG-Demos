@@ -17,8 +17,7 @@ This folder lives alongside the existing OCP manifests and Dockerfiles in `Part3
 │  └─────────────────┘                                     │
 │                                                           │
 │  ┌─────────────────┐   OpenAI-compatible API             │
-│  │  vllm-service   │ :8000   (IBM project-ai-services    │
-│  │  (ppc64le CPU)  │          vllm-cpu image)            │
+│  │ ollama-service  │ :11434  (IBM ppc64le Ollama image) │
 │  └─────────────────┘                                     │
 │                                                           │
 │  ┌─────────────────┐   vector store                      │
@@ -31,12 +30,12 @@ This folder lives alongside the existing OCP manifests and Dockerfiles in `Part3
 |---|---|---|
 | Carbon RAG UI | 3000 | Built locally from `../carbon-rag-ui` |
 | RAG Backend | 8080 | Built locally from `../rag-backend` |
-| vLLM (Granite) | 8000 | `ghcr.io/ibm/project-ai-services/vllm-cpu:latest` |
+| Ollama (Granite) | 11434 | `icr.io/ppc64le-oss/ollama-ppc64le:v0.17.6` |
 | OpenSearch | 9200 | `icr.io/ppc64le-oss/opensearch-ppc64le:3.3.0` |
 
-### Why vLLM instead of llama.cpp?
+### Why Ollama instead of llama.cpp?
 
-The IBM [project-ai-services](https://github.com/IBM/project-ai-services) team maintains a `vllm-cpu` container image optimised for ppc64le.  It exposes the same OpenAI-compatible API (`/v1/chat/completions`) as llama.cpp's server, so the RAG backend works without code changes — only the `GRANITE_HOST` / `GRANITE_PORT` env vars are updated to point at `vllm-service:8000`.
+The IBM Container Registry provides a `ppc64le` Ollama image that starts cleanly on this RHEL Power environment and exposes an OpenAI-compatible API (`/v1/chat/completions`). The RAG backend can therefore use Ollama with only environment/config changes, pointing `GRANITE_HOST` / `GRANITE_PORT` at `ollama-service:11434`.
 
 ---
 
@@ -53,15 +52,15 @@ The IBM [project-ai-services](https://github.com/IBM/project-ai-services) team m
 ```bash
 ssh cecuser@<your-lpar-fqdn>
 
-git clone https://github.com/EMEA-AI-SQUAD/RAG-with-Notebook.git
-cd RAG-with-Notebook/Part3-RAG-Sales-Manual/podman
+git clone https://github.com/DSpurway/IBM-Power-RAG-Demos.git
+cd IBM-Power-RAG-Demos/Part3-RAG-Sales-Manual/podman
 ```
 
 ### 3. (Optional) Configure environment
 
 ```bash
 cp env.example .env
-# Edit .env if you want a different Granite model or Watson credentials
+# Edit .env if you want a different Ollama image tag or Watson credentials
 nano .env
 ```
 
@@ -79,9 +78,9 @@ The deploy script will:
 4. Start all four services
 5. Wait for OpenSearch and the backend to become healthy
 
-> **First run note**: vLLM downloads the Granite model (~4 GB) on first start.  
-> The UI and backend are available immediately; vLLM queries will queue until the model is loaded.  
-> Check progress with `./manage.sh logs vllm`.
+> **First run note**: start Ollama, then pull the Granite model inside the container before testing queries.
+> Example: `podman exec ollama-service ollama pull granite4:latest`
+> Check progress with `./manage.sh logs ollama`.
 
 ### 5. Access the demo
 
@@ -121,7 +120,7 @@ Once a single ingestion looks correct, use the Carbon UI to trigger bulk ingesti
 
 ```bash
 ./manage.sh status              # health of all services
-./manage.sh logs vllm           # tail vLLM logs (useful during model load)
+./manage.sh logs ollama         # tail Ollama logs
 ./manage.sh logs rag-backend    # tail RAG backend logs
 ./manage.sh restart rag-backend # restart one service (after a code change)
 ./manage.sh rebuild rag-backend # rebuild image + restart (after code change)
@@ -156,11 +155,12 @@ sudo sysctl -w vm.max_map_count=262144
 ./manage.sh logs opensearch
 ```
 
-### vLLM is slow to respond
-Expected on first start — the model download takes several minutes.
+### Ollama model is not ready yet
+Expected before the first model pull completes.
 ```bash
-./manage.sh logs vllm
-# Watch for "Application startup complete"
+./manage.sh logs ollama
+podman exec ollama-service ollama list
+podman exec ollama-service ollama pull granite4:latest
 ```
 
 ### RAG backend cannot reach OpenSearch
