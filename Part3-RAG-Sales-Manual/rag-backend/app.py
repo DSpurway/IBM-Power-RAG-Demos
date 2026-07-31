@@ -7,6 +7,7 @@ Enhanced with hybrid query routing and reranking
 from flask import Flask, request, jsonify, Response
 from flask_cors import CORS
 import os
+import re
 import logging
 import hashlib
 import numpy as np
