@@ -12,6 +12,17 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 
 logger = logging.getLogger(__name__)
 
+# Fixed list of known major section headings used as section boundaries.
+# Using a fixed list prevents the regex from treating any short Title Case line
+# (e.g. a table header or product name) as a section boundary.
+MAJOR_SECTIONS = [
+    'Abstract', 'Highlights', 'Description', 'Models',
+    'Technical description', 'Publications', 'Features',
+    'Feature descriptions', 'Accessories', 'Supplies',
+    'Trademarks', 'Specifications', 'Product life cycle dates',
+    'Product positioning',
+]
+
 class SalesManualChunker:
     """
     Intelligent chunker for IBM Power Sales Manual pages
@@ -21,6 +32,8 @@ class SalesManualChunker:
     def __init__(self, max_chunk_size=1500, overlap=100):
         self.max_chunk_size = max_chunk_size
         self.overlap = overlap
+        # Paragraph-first splitter — prefers \n\n boundaries so sentences are
+        # not cut mid-way. Character count is the last resort.
         self.text_splitter = RecursiveCharacterTextSplitter(
             chunk_size=max_chunk_size,
             chunk_overlap=overlap,
@@ -52,7 +65,7 @@ class SalesManualChunker:
             'content_hash': content_hash,
             'content_length': len(full_text),
             'ingestion_timestamp': ingestion_timestamp,
-            'chunker_version': '1.0.0'
+            'chunker_version': '1.1.0'
         }
         
         # 1. Extract and preserve lifecycle table (CRITICAL for direct lookup)
@@ -408,54 +421,50 @@ class SalesManualChunker:
     
     def _find_section(self, text: str, section_name: str) -> Optional[str]:
         """
-        Find a section by name in the text
-        Completely skips "Feature descriptions" section to avoid duplicates with structured feature extraction
+        Find a section by name in the text.
+        Section boundaries are detected using MAJOR_SECTIONS — a fixed list of
+        known headings — rather than a generic Title Case regex that would
+        incorrectly split on product names, table headers, etc.
+        Skips "Feature descriptions" entirely (handled by structured extraction).
         """
-        # SKIP "Feature descriptions" section entirely - it's handled by _extract_feature_codes_from_sections
+        # SKIP "Feature descriptions" section — feature codes extracted separately
         if 'Feature description' in section_name:
             logger.debug(f"Skipping '{section_name}' section - feature codes extracted separately via structured sections")
             return None
-        
-        # Improved pattern that handles hierarchical sections better
-        # Match section heading followed by content until we hit another major section heading
-        # Major sections start with capital letter and are typically short (< 50 chars)
-        pattern = rf'^{re.escape(section_name)}\s*$\n+(.*?)(?=\n^[A-Z][a-z\s]+$\n|\Z)'
+
+        # Build alternation of all *other* major section names as boundary anchors
+        other_sections = [s for s in MAJOR_SECTIONS if s.lower() != section_name.lower()]
+        boundary = '|'.join(re.escape(s) for s in other_sections)
+
+        # Primary pattern: section heading on its own line, content up to any
+        # other known major section heading (also on its own line) or EOF.
+        pattern = rf'^{re.escape(section_name)}\s*$\n+(.*?)(?=\n^(?:{boundary})\s*$|\Z)'
         match = re.search(pattern, text, re.MULTILINE | re.DOTALL | re.IGNORECASE)
-        
+
         if not match:
-            # Fallback: try without strict line boundaries
-            pattern = rf'{re.escape(section_name)}\s*\n+(.*?)(?=\n[A-Z][a-z\s]+\n|\Z)'
+            # Fallback: looser anchoring without strict line boundaries
+            pattern = rf'{re.escape(section_name)}\s*\n+(.*?)(?=\n(?:{boundary})\n|\Z)'
             match = re.search(pattern, text, re.DOTALL | re.IGNORECASE)
-        
+
         if not match:
             return None
-            
+
         section_text = match.group(1).strip()
-        
         return section_text if section_text else None
     
     def _clean_section_text(self, text: str) -> str:
         """
-        Clean section text by removing metadata artifacts and unwanted patterns
+        Clean section text by removing metadata artifacts only.
+        Feature code heading lines (e.g. "(#0010) Feature name") are intentionally
+        KEPT — stripping them orphaned the body text that follows, making the
+        retrieved chunk unreadable without its heading context.
         """
-        # Remove metadata patterns like "Description (Part 181/922)"
+        # Remove pagination artifacts like "Description (Part 181/922)"
         text = re.sub(r'\(Part\s+\d+/\d+\)', '', text)
-        
-        # Remove standalone feature code references (but keep them if they're part of sentences)
-        # Only remove lines that are JUST feature codes, not feature codes in context
-        lines = text.split('\n')
-        cleaned_lines = []
-        for line in lines:
-            # Skip lines that are ONLY a feature code heading with no other content
-            if re.match(r'^\(#[A-Z0-9]{4}\)\s*-?\s*[A-Z][^\n]{0,50}$', line.strip()):
-                continue
-            cleaned_lines.append(line)
-        
-        text = '\n'.join(cleaned_lines)
-        
+
         # Clean up excessive whitespace
         text = re.sub(r'\n{3,}', '\n\n', text)
-        
+
         return text.strip()
     
     def _split_by_subheadings(self, text: str, section_name: str) -> List[tuple]:
