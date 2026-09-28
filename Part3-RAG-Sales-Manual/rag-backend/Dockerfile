@@ -53,6 +53,7 @@ COPY server_mtm_mapper.py .
 COPY reranker_service.py .
 COPY activation_feature_service.py .
 COPY physical_feature_service.py .
+COPY announcement_service.py .
 
 # Create PDF directory and copy sample PDFs
 RUN mkdir -p /app/pdfs
@@ -90,6 +91,7 @@ COPY --from=builder /app/server_mtm_mapper.py .
 COPY --from=builder /app/reranker_service.py .
 COPY --from=builder /app/activation_feature_service.py .
 COPY --from=builder /app/physical_feature_service.py .
+COPY --from=builder /app/announcement_service.py .
 COPY --from=builder /app/pdfs /app/pdfs
 
 # Environment variables with defaults
