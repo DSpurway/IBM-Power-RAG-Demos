@@ -63,9 +63,10 @@ COPY pdfs/*.pdf /app/pdfs/
 # ============================================================================
 FROM python:3.12-slim
 
-# Install only runtime dependencies
+# Install only runtime dependencies (curl required for Podman healthcheck)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libgomp1 \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
