@@ -32,10 +32,10 @@ RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
         transformers \
         lxml \
         numpy \
-        --extra-index-url=https://wheels.developerfirst.ibm.com/ppc64le/linux && \
+        --extra-index-url=https://wheels.developerfirst.ibm.com/ppc64le/linux/+simple/ && \
     grep -Ev "^(torch|torchvision|sentence-transformers|transformers|huggingface-hub|tokenizers|lxml|numpy)" requirements.txt > requirements-base.txt && \
     pip install --no-cache-dir --prefer-binary -r requirements-base.txt \
-        --extra-index-url=https://wheels.developerfirst.ibm.com/ppc64le/linux && \
+        --extra-index-url=https://wheels.developerfirst.ibm.com/ppc64le/linux/+simple/ && \
     mkdir -p /app/docling-models
 
 # Copy application code
