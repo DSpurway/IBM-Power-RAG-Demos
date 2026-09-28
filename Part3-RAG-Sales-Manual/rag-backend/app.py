@@ -1525,7 +1525,8 @@ def generate():
                         {'label': 'Announcement Date', 'value': 'announced'},
                         {'label': 'Availability Date', 'value': 'available'},
                         {'label': 'Marketing Withdrawal Date', 'value': 'withdrawn'},
-                        {'label': 'Service Discontinuation Date', 'value': 'end_of_support'},
+                        {'label': 'End of Standard Support / Service Discontinuation', 'value': 'end_of_support'},
+                        {'label': 'Support Level Changed Date', 'value': 'support_level_changed'},
                         {'label': 'Show All Lifecycle Dates', 'value': 'all'}
                     ],
                     'ai_services_used': ['watsonx_assistant'],

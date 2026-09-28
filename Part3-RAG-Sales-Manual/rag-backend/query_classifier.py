@@ -36,8 +36,8 @@ class QueryClassifier:
     # Patterns for lifecycle/table queries
     LIFECYCLE_PATTERNS = [
         r"when\s+(?:was|is|will)\s+.*(?:announced|available|withdrawn|discontinued)",
-        r"(?:announcement|availability|withdrawal|discontinuation)\s+date",
-        r"what\s+(?:is|was)\s+the\s+(?:announcement|availability|withdrawal)\s+date",
+        r"(?:announcement|availability|withdrawal|discontinuation|support\s+level)\s+date",
+        r"what\s+(?:is|was)\s+the\s+(?:announcement|availability|withdrawal|support\s+level)\s+date",
         r"when\s+(?:did|does|will)\s+.*(?:announce|become\s+available|withdraw)",
         r"when\s+(?:did|does|will)\s+.*stop\s+(?:supporting|selling)",
         r"when\s+(?:was|is)\s+.*(?:end\s+of\s+(?:life|support|service|marketing))",
@@ -45,6 +45,8 @@ class QueryClassifier:
         r"stop\s+support(?:ing)?",  # Added: "stop supporting"
         r"end(?:ed)?\s+support",     # Added: "end support", "ended support"
         r"no\s+longer\s+support",    # Added: "no longer support"
+        r"support\s+level\s+change[ds]?",  # Added: "support level changed", "support level change"
+        r"change(?:d)?\s+support\s+level", # Added: "changed support level"
     ]
     
     # Patterns for activation feature queries
@@ -301,11 +303,13 @@ class QueryClassifier:
             return 'withdrawn'
         elif 'stop selling' in query_lower or 'stop marketing' in query_lower:
             return 'withdrawn'  # "stop selling" = marketing withdrawal
+        elif 'support level' in query_lower or 'support changed' in query_lower:
+            return 'support_level_changed'
         elif 'discontinue' in query_lower or 'discontinuation' in query_lower:
             return 'discontinued'
         elif 'stop support' in query_lower or 'end support' in query_lower or 'end of support' in query_lower:
             return 'end_of_support'
-        elif 'end of service' in query_lower or 'end of life' in query_lower:
+        elif 'end of service' in query_lower or 'end of life' in query_lower or 'standard support' in query_lower:
             return 'end_of_support'
         
         return None

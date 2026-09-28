@@ -470,14 +470,16 @@ class TableLookupService:
                 cells = [cell.strip() for cell in re.split(r'\||\s{2,}', line) if cell.strip()]
                 logger.info(f"Extracted cells: {cells}")
                 
-                # Expected format: [MTM, Announced, Available, Marketing withdrawn, Support level changed, Service discontinued]
-                # Or with leading/trailing pipes: ['', MTM, Announced, ...]
+                # Expected format:
+                # 5-column (classic): [MTM, Announced, Available, Marketing withdrawn, Service discontinued]
+                # 6-column (updated): [MTM, Announced, Available, Marketing withdrawn, Support level changed, Service discontinued]
                 
-                # Find cells that look like dates or "-"
-                date_pattern = r'\d{4}-\d{2}-\d{2}'
+                # Find cells that look like ISO dates (2018-02-13), human dates (31 January 2026), or "-"
+                date_iso_pattern = r'^\d{4}-\d{2}-\d{2}$'
+                date_text_pattern = r'^\d{1,2}\s+[A-Za-z]+\s+\d{4}$'
                 date_cells = []
                 for cell in cells:
-                    if re.match(date_pattern, cell) or cell == '-':
+                    if re.match(date_iso_pattern, cell) or re.match(date_text_pattern, cell) or cell == '-':
                         date_cells.append(cell)
                 
                 logger.info(f"Found date cells: {date_cells}")
@@ -486,9 +488,21 @@ class TableLookupService:
                     announced = date_cells[0] if len(date_cells) > 0 else '-'
                     available = date_cells[1] if len(date_cells) > 1 else '-'
                     withdrawn = date_cells[2] if len(date_cells) > 2 else '-'
-                    # Service discontinued is typically at index 4 (after "Support level changed" at index 3)
-                    # But safely check if it exists
-                    discontinued = date_cells[4] if len(date_cells) > 4 else (date_cells[3] if len(date_cells) > 3 else '-')
+                    
+                    support_level_changed = '-'
+                    discontinued = '-'
+                    
+                    if len(date_cells) >= 5:
+                        # 6-column table: index 3 is Support level changed, index 4 is Service discontinued
+                        support_level_changed = date_cells[3]
+                        discontinued = date_cells[4]
+                    elif len(date_cells) == 4:
+                        # 5-column table: index 3 is Service discontinued
+                        discontinued = date_cells[3]
+                    
+                    # Determine effective end of standard support date
+                    # If support_level_changed is set, standard support ended then (even if service discontinued is '-')
+                    effective_end_of_support = support_level_changed if support_level_changed != '-' else discontinued
                     
                     # Store this MTM's data
                     mtm_data = {
@@ -496,7 +510,9 @@ class TableLookupService:
                         'announced': announced,
                         'available': available,
                         'withdrawn': withdrawn,
-                        'discontinued': discontinued
+                        'support_level_changed': support_level_changed,
+                        'discontinued': discontinued,
+                        'effective_end_of_support': effective_end_of_support
                     }
                     found_mtms.append(mtm_data)
                     
@@ -509,13 +525,16 @@ class TableLookupService:
                             f"\nLifecycle Information for {line_mtm}:",
                             f"• Announced: {announced if announced != '-' else 'Not yet announced'}",
                             f"• Available: {available if available != '-' else 'Not yet announced'}",
-                            f"• Marketing Withdrawn: {withdrawn if withdrawn != '-' else 'Not yet announced'}",
-                            f"• Service Discontinued: {discontinued if discontinued != '-' else 'Not yet announced'}"
+                            f"• Marketing Withdrawn: {withdrawn if withdrawn != '-' else 'Not yet announced'}"
                         ]
+                        if support_level_changed != '-':
+                            table_lines.append(f"• Support Level Changed (End of Standard Support): {support_level_changed}")
+                        table_lines.append(f"• Service Discontinued: {discontinued if discontinued != '-' else 'Not yet announced'}")
                         
                         # If specific field requested, provide direct answer first
                         if field:
                             field_lower = field.lower()
+                            note = ""
                             if 'announce' in field_lower:
                                 date_val = announced
                                 field_name = "Announcement date"
@@ -525,18 +544,27 @@ class TableLookupService:
                             elif 'withdraw' in field_lower:
                                 date_val = withdrawn
                                 field_name = "Marketing Withdrawal date"
-                            elif 'discontinue' in field_lower or 'end_of_support' in field_lower:
-                                date_val = discontinued
-                                field_name = "Service Discontinuation date"
+                            elif 'support_level' in field_lower or 'support changed' in field_lower:
+                                date_val = support_level_changed
+                                field_name = "Support Level Changed date"
+                                if date_val != '-':
+                                    note = " (Standard base support ended; Service Extension / TLS terms apply)."
+                            elif 'discontinue' in field_lower or 'end_of_support' in field_lower or 'support' in field_lower:
+                                date_val = effective_end_of_support
+                                if support_level_changed != '-' and discontinued == '-':
+                                    field_name = "End of Standard Support (Support Level Changed)"
+                                    note = " (Standard base support ended on this date; Service Extension / TLS support may be available)."
+                                else:
+                                    field_name = "Service Discontinuation date"
                             else:
                                 date_val = None
                                 field_name = None
                             
                             if field_name:
-                                if date_val == '-':
+                                if date_val == '-' or not date_val:
                                     answer = f"The {field_name} for the {line_mtm} has not been announced yet."
                                 else:
-                                    answer = f"The {field_name} for the {line_mtm} is {date_val}."
+                                    answer = f"The {field_name} for the {line_mtm} is {date_val}.{note}"
                                 
                                 # Add full table for reference
                                 answer += "\n" + '\n'.join(table_lines)
