@@ -1,11 +1,13 @@
-# RHEL-based Dockerfile for Carbon RAG UI
-# Based on successful RHEL deployment script approach
+# Debian-slim Dockerfile for Carbon RAG UI
+# NOTE: uses node:18-slim (Debian) not UBI9 — avoids Quay CDN IPv6 issue
+#       on TechZone pok-systems VMs.
 
-FROM registry.access.redhat.com/ubi9/ubi:latest
+FROM node:18-slim
 
-# Install Node.js 18 and build dependencies
-RUN dnf install -y nodejs npm git gcc gcc-c++ make python3 && \
-    dnf clean all
+# Install build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git gcc g++ make python3 \
+    && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user
 RUN useradd -m -u 1001 nextjs

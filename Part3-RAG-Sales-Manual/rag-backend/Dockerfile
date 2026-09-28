@@ -1,21 +1,20 @@
 # Multi-stage build for RAG Backend Service with OpenSearch
-# Simplified - no Rust compiler or custom SQLite needed!
-FROM registry.access.redhat.com/ubi9/python-312:latest AS builder
-
-USER root
+# NOTE: uses python:3.12-slim (Debian) not UBI9 — avoids Quay CDN IPv6 issue
+#       on TechZone pok-systems VMs. Path: /usr/local/lib/python3.12/site-packages
+FROM python:3.12-slim AS builder
 
 # Install system dependencies required for building Python packages
-RUN dnf install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
-    gcc-c++ \
+    g++ \
     git \
     make \
-    python3.12-devel \
-    openblas-devel \
-    lcms2-devel \
-    freetype \
-    libjpeg-turbo \
-    && dnf clean all
+    python3-dev \
+    libopenblas-dev \
+    liblcms2-dev \
+    libfreetype6-dev \
+    libjpeg-turbo-dev \
+    && rm -rf /var/lib/apt/lists/*
 
 # Create app directory
 WORKDIR /app
@@ -62,20 +61,18 @@ COPY pdfs/*.pdf /app/pdfs/
 # ============================================================================
 # Production Stage
 # ============================================================================
-FROM registry.access.redhat.com/ubi9/python-312:latest
-
-USER root
+FROM python:3.12-slim
 
 # Install only runtime dependencies
-RUN dnf install -y \
-    libgomp \
-    && dnf clean all
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
 # Copy installed packages from builder
-COPY --from=builder /opt/app-root/lib/python3.12/site-packages /opt/app-root/lib/python3.12/site-packages
-COPY --from=builder /opt/app-root/bin /opt/app-root/bin
+COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
+COPY --from=builder /usr/local/bin /usr/local/bin
 
 # Copy application
 COPY --from=builder /app/app.py .
