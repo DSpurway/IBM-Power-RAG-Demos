@@ -13,6 +13,7 @@ import {
   TextArea,
   Tile,
   Loading,
+  InlineLoading,
   InlineNotification,
   DataTable,
   TableContainer,
