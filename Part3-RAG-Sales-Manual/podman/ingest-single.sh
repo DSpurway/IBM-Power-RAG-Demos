@@ -47,7 +47,7 @@ if [[ -z "${MTM}" || -z "${URL}" ]]; then
     exit 1
 fi
 
-BACKEND_URL="${BACKEND_URL:-http://localhost:8080}"
+BACKEND_URL="${BACKEND_URL:-http://localhost:8081}"
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -67,18 +67,20 @@ fi
 ok "Backend is healthy"
 echo ""
 
-# ── 2. POST to /ingest ────────────────────────────────────────────────────────
+# ── 2. POST to /api/ingest-sales-manual ───────────────────────────────────────
 PAYLOAD=$(cat <<EOF
 {
   "url": "${URL}",
   "mtm": "${MTM}",
-  "force_reingest": true
+  "server_name": "IBM Power System ${MTM}",
+  "server_model": "${MTM}",
+  "processor": "POWER9"
 }
 EOF
 )
 
 echo -e "${BOLD}Step 1: Sending ingestion request…${NC}"
-info "POST ${BACKEND_URL}/ingest"
+info "POST ${BACKEND_URL}/api/ingest-sales-manual"
 echo ""
 
 RESPONSE_FILE=$(mktemp /tmp/ingest-response-XXXXXX.json)
@@ -86,7 +88,7 @@ HTTP_STATUS=$(curl -s -o "${RESPONSE_FILE}" -w "%{http_code}" \
     -X POST \
     -H "Content-Type: application/json" \
     -d "${PAYLOAD}" \
-    "${BACKEND_URL}/ingest")
+    "${BACKEND_URL}/api/ingest-sales-manual")
 
 if [[ "${HTTP_STATUS}" -ne 200 ]]; then
     err "Ingestion request failed — HTTP ${HTTP_STATUS}"
@@ -104,67 +106,10 @@ echo ""
 echo -e "${BOLD}Step 2: Chunk summary${NC}"
 echo ""
 
-TOTAL=$(python3 -c "
-import json, sys
-d = json.load(open('${RESPONSE_FILE}'))
-chunks = d.get('chunks', d.get('documents', []))
-print(len(chunks))
-" 2>/dev/null || echo "?")
-
-info "Total chunks created: ${TOTAL}"
-
 python3 - <<PYEOF
 import json
-from collections import Counter
-
 data = json.load(open("${RESPONSE_FILE}"))
-chunks = data.get("chunks", data.get("documents", []))
-
-types = Counter(
-    c.get("metadata", {}).get("section_type", "unknown")
-    for c in chunks
-)
-print("\n  Chunk types:")
-for t, n in sorted(types.items()):
-    print(f"    {n:3d}  {t}")
-PYEOF
-
-echo ""
-
-# Show first chunk of each type as a sample
-echo -e "${BOLD}Step 3: Sample chunks (first of each type)${NC}"
-echo ""
-
-python3 - <<PYEOF
-import json
-
-CYAN  = "\033[0;36m"
-BOLD  = "\033[1m"
-NC    = "\033[0m"
-
-data = json.load(open("${RESPONSE_FILE}"))
-chunks = data.get("chunks", data.get("documents", []))
-
-seen_types = set()
-for c in chunks:
-    stype = c.get("metadata", {}).get("section_type", "unknown")
-    if stype in seen_types:
-        continue
-    seen_types.add(stype)
-
-    meta  = c.get("metadata", {})
-    text  = c.get("text", c.get("page_content", ""))
-    title = meta.get("section_title", "")
-    feat  = meta.get("feature_code", "")
-
-    print(f"{BOLD}{CYAN}  ── {stype} ──{NC}")
-    if title:
-        print(f"  Title:  {title}")
-    if feat:
-        print(f"  Feature code: #{feat}")
-    preview = " ".join(text.split())[:300]
-    print(f"  Text preview:\n    {preview}…")
-    print()
+print(json.dumps(data, indent=2))
 PYEOF
 
 rm -f "${RESPONSE_FILE}"
@@ -175,7 +120,7 @@ echo ""
 
 OPENSEARCH_URL="${OPENSEARCH_URL:-http://localhost:9200}"
 
-COLLECTION_INFO=$(curl -sf "${BACKEND_URL}/collections" 2>/dev/null || echo "{}")
+COLLECTION_INFO=$(curl -sf "${BACKEND_URL}/api/collections" 2>/dev/null || echo "{}")
 
 COLLECTION=$(python3 -c "
 import json, sys
