@@ -13,7 +13,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libopenblas-dev \
     liblcms2-dev \
     libfreetype6-dev \
-    libjpeg-turbo-dev \
+    libjpeg62-turbo-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Create app directory
