@@ -13,6 +13,7 @@ const IBM_POWER_SERVERS = [
   { model: "E1150", name: "IBM Power E1150", processor: "POWER11" },
   { model: "S1124", name: "IBM Power S1124", processor: "POWER11" },
   { model: "S1122", name: "IBM Power S1122", processor: "POWER11" },
+  { model: "S1112", name: "IBM Power S1112", processor: "POWER11" },
   // POWER10 Servers - Enterprise first (largest to smallest), then Scale-out (largest to smallest), then Linux (largest to smallest)
   { model: "E1080", name: "IBM Power E1080", processor: "POWER10" },
   { model: "E1050", name: "IBM Power E1050", processor: "POWER10" },

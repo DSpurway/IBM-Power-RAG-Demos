@@ -201,11 +201,19 @@ def scrape_ibm_docs_enhanced(url, wait_time=10):
         print(f"Loading URL: {url}")
         driver.get(url)
         
-        # Wait for main content to load
+        # Wait for main content or article to load
         print("Waiting for content to render...")
-        WebDriverWait(driver, 20).until(
-            EC.presence_of_element_located((By.CLASS_NAME, "ibmdocs-content-container"))
-        )
+        try:
+            WebDriverWait(driver, 15).until(
+                lambda d: d.find_elements(By.CLASS_NAME, "ibmdocs-content-container") or
+                          d.find_elements(By.TAG_NAME, "article") or
+                          d.find_elements(By.CLASS_NAME, "content-wrapper") or
+                          d.find_elements(By.TAG_NAME, "main") or
+                          "Sales manual" in d.page_source or
+                          "Product life cycle dates" in d.page_source
+            )
+        except Exception as e:
+            print(f"Warning during wait: {e}")
         
         # Additional wait for JavaScript to complete
         time.sleep(wait_time)
@@ -216,13 +224,19 @@ def scrape_ibm_docs_enhanced(url, wait_time=10):
         # Parse with BeautifulSoup
         soup = BeautifulSoup(html, 'html.parser')
         
-        # Extract main content container
-        content_div = soup.find('div', class_='ibmdocs-content-container')
+        # Extract main content container (support multiple DOM structures)
+        content_div = (
+            soup.find('div', class_='ibmdocs-content-container') or
+            soup.find('article') or
+            soup.find('main') or
+            soup.find('div', class_='content-wrapper') or
+            soup.find('body')
+        )
         
         if not content_div:
             return {
                 'success': False,
-                'error': 'Could not find ibmdocs-content-container',
+                'error': 'Could not find content container',
                 'html_length': len(html)
             }
         

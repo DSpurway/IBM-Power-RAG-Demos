@@ -2701,6 +2701,7 @@ def start_bulk_ingestion():
             {"mtm": "9043-MRU", "model": "E1150", "name": "IBM Power E1150", "processor": "POWER11", "url": "https://www.ibm.com/docs/en/announcements/family-904302-power-e1150-enterprise-midrange-technology-based-server-9043-mru"},
             {"mtm": "9824-42A", "model": "S1124", "name": "IBM Power S1124", "processor": "POWER11", "url": "https://www.ibm.com/docs/en/announcements/family-982402-power-s1124-9824-42a"},
             {"mtm": "9824-22A", "model": "S1122", "name": "IBM Power S1122", "processor": "POWER11", "url": "https://www.ibm.com/docs/en/announcements/family-982401-power-s1122-9824-22a"},
+            {"mtm": "9028-21N", "model": "S1112", "name": "IBM Power S1112", "processor": "POWER11", "url": "https://www.ibm.com/docs/en/announcements/power-s1112-server"},
             # POWER10
             {"mtm": "9080-HEX", "model": "E1080", "name": "IBM Power E1080", "processor": "POWER10", "url": "https://www.ibm.com/docs/en/announcements/power-e1080-enterprise-server"},
             {"mtm": "9043-MRX", "model": "E1050", "name": "IBM Power E1050", "processor": "POWER10", "url": "https://www.ibm.com/docs/en/announcements/power-e1050-enterprise-midrange-technology-based-server"},

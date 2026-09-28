@@ -53,6 +53,7 @@ const IBM_POWER_SERVERS = [
   { model: "E1150", name: "IBM Power E1150", mtm: "9043-MRU", processor: "POWER11", url: "https://www.ibm.com/docs/en/announcements/family-904302-power-e1150-enterprise-midrange-technology-based-server-9043-mru", category: "Enterprise" },
   { model: "S1124", name: "IBM Power S1124", mtm: "9824-42A", processor: "POWER11", url: "https://www.ibm.com/docs/en/announcements/family-982402-power-s1124-9824-42a", category: "Scale-out" },
   { model: "S1122", name: "IBM Power S1122", mtm: "9824-22A", processor: "POWER11", url: "https://www.ibm.com/docs/en/announcements/family-982401-power-s1122-9824-22a", category: "Scale-out" },
+  { model: "S1112", name: "IBM Power S1112", mtm: "9028-21N", processor: "POWER11", url: "https://www.ibm.com/docs/en/announcements/power-s1112-server", category: "Scale-out" },
   // POWER10 Servers - Enterprise first (largest to smallest), then Scale-out (largest to smallest), then Linux (largest to smallest)
   { model: "E1080", name: "IBM Power E1080", mtm: "9080-HEX", processor: "POWER10", url: "https://www.ibm.com/docs/en/announcements/power-e1080-enterprise-server", category: "Enterprise" },
   { model: "E1050", name: "IBM Power E1050", mtm: "9043-MRX", processor: "POWER10", url: "https://www.ibm.com/docs/en/announcements/power-e1050-enterprise-midrange-technology-based-server", category: "Enterprise" },
