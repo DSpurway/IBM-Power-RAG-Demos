@@ -164,6 +164,24 @@ def get_reranker_service():
         logger.info("Reranker service initialized successfully")
     return _reranker_service
 
+_announcement_service = None
+
+def get_announcement_service():
+    """Lazy load announcement service"""
+    global _announcement_service
+    if _announcement_service is None:
+        logger.info("Initializing announcement service")
+        from announcement_service import AnnouncementScannerService
+        client = get_opensearch_client()
+        embeddings = get_embeddings()
+        _announcement_service = AnnouncementScannerService(
+            opensearch_client=client,
+            embeddings_model=embeddings,
+            scraper_url=os.getenv("SCRAPER_URL", "https://ibm-docs-scraper-enhanced.29bw00k1vhg4.eu-gb.codeengine.appdomain.cloud")
+        )
+        logger.info("Announcement service initialized successfully")
+    return _announcement_service
+
 def _generate_index_name(collection_name):
     """Generate OpenSearch index name from collection name"""
     hash_part = hashlib.md5(collection_name.encode()).hexdigest()
@@ -299,7 +317,7 @@ def list_collections():
         # Note: This excludes other collections like Harry Potter which are used in other parts of the demo
         known_mtms = [
             # POWER11
-            "9080-HEU", "9043-MRU", "9824-42A", "9824-22A",
+            "9080-HEU", "9043-MRU", "9824-42A", "9824-22A", "9028-21N",
             # POWER10
             "9080-HEX", "9043-MRX", "9105-42A", "9105-22A",
             "9105-41B", "9028-21B", "9786-42H", "9786-22H",
@@ -325,6 +343,13 @@ def list_collections():
                 'collection_name': collection_name,
                 'expected_index': expected_index
             }
+        
+        # Add announcements collection
+        ann_expected_index = _generate_index_name("rag_power_announcements")
+        mtm_to_expected_index["ANNOUNCEMENTS"] = {
+            'collection_name': "rag_power_announcements",
+            'expected_index': ann_expected_index
+        }
         
         logger.info(f"Expected index mappings: {mtm_to_expected_index}")
         
@@ -353,13 +378,14 @@ def list_collections():
         
         logger.info(f"Found {len(sales_manual_indices)} Sales Manual indices and {len(other_indices)} other indices")
         
-        # Try to match each known MTM to its hashed index and get document count
-        for mtm in known_mtms:
-            mapping = mtm_to_expected_index[mtm]
+        # Try to match each known key (MTM or ANNOUNCEMENTS) to its hashed index and get document count
+        keys_to_check = known_mtms + ["ANNOUNCEMENTS"]
+        for key in keys_to_check:
+            mapping = mtm_to_expected_index[key]
             collection_name = mapping['collection_name']
             expected_index = mapping['expected_index']
             
-            logger.info(f"Checking MTM {mtm}: collection={collection_name}, expected_index={expected_index}, exists={expected_index in index_names}")
+            logger.info(f"Checking key {key}: collection={collection_name}, expected_index={expected_index}, exists={expected_index in index_names}")
             
             if expected_index in index_names:
                 # Get document count for this index
@@ -367,25 +393,25 @@ def list_collections():
                     count_response = client.count(index=expected_index)
                     doc_count = count_response.get('count', 0)
                     
-                    logger.info(f"MTM {mtm} index {expected_index} has {doc_count} documents")
+                    logger.info(f"Key {key} index {expected_index} has {doc_count} documents")
                     
                     # Include even if it has 0 documents (to show it exists but is empty)
-                    collections_map[mtm] = expected_index
-                    collections_details[mtm] = {
+                    collections_map[key] = expected_index
+                    collections_details[key] = {
                         'index_name': expected_index,
                         'document_count': doc_count,
                         'collection_name': collection_name
                     }
                     
                     if doc_count > 0:
-                        logger.info(f"✓ Found indexed MTM {mtm}: {doc_count} documents in {expected_index}")
+                        logger.info(f"✓ Found indexed key {key}: {doc_count} documents in {expected_index}")
                     else:
-                        logger.warning(f"⚠ MTM {mtm} index exists but has 0 documents: {expected_index}")
+                        logger.warning(f"⚠ Key {key} index exists but has 0 documents: {expected_index}")
                         
                 except Exception as count_error:
-                    logger.error(f"Error getting count for {mtm} ({expected_index}): {count_error}")
+                    logger.error(f"Error getting count for {key} ({expected_index}): {count_error}")
             else:
-                logger.info(f"✗ MTM {mtm} not found (expected index: {expected_index})")
+                logger.info(f"✗ Key {key} not found (expected index: {expected_index})")
         
         logger.info(f"Final result: {len(collections_map)} MTMs found with indices")
         logger.info(f"MTMs with documents: {[mtm for mtm, details in collections_details.items() if details['document_count'] > 0]}")
@@ -2903,6 +2929,146 @@ def start_bulk_ingestion():
         
     except Exception as e:
         logger.error(f"Error starting bulk ingestion: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+# ============================================================================
+# ANNOUNCEMENTS ENDPOINTS
+# ============================================================================
+
+@app.route('/api/announcements/scan', methods=['POST'])
+def scan_announcements():
+    """
+    Scan the IBM Power Announcements page and return discovered announcements.
+    Detects new vs previously ingested announcements.
+    """
+    try:
+        service = get_announcement_service()
+        announcements = service.fetch_announcements_index()
+        
+        # Check against OpenSearch for existing announcements
+        client = get_opensearch_client()
+        index_name = _generate_index_name(service.collection_name)
+        
+        existing_ids = set()
+        if client.indices.exists(index=index_name):
+            # Query unique announcement IDs
+            try:
+                res = client.search(
+                    index=index_name,
+                    body={
+                        "size": 0,
+                        "aggs": {
+                            "unique_ids": {
+                                "terms": {
+                                    "field": "metadata.announcement_id.keyword",
+                                    "size": 1000
+                                }
+                            }
+                        }
+                    }
+                )
+                buckets = res.get('aggregations', {}).get('unique_ids', {}).get('buckets', [])
+                existing_ids = {b['key'] for b in buckets}
+            except Exception as e:
+                logger.warning(f"Could not aggregate existing announcement IDs: {e}")
+        
+        for ann in announcements:
+            ann['is_ingested'] = ann['announcement_id'] in existing_ids
+            
+        new_count = sum(1 for ann in announcements if not ann['is_ingested'])
+        
+        return jsonify({
+            'success': True,
+            'total_found': len(announcements),
+            'new_count': new_count,
+            'announcements': announcements
+        })
+    except Exception as e:
+        logger.error(f"Error scanning announcements: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/announcements/ingest', methods=['POST'])
+def ingest_announcements():
+    """
+    Ingest specific announcements or all newly discovered announcements.
+    """
+    try:
+        data = request.get_json() or {}
+        announcements_to_ingest = data.get('announcements')
+        force = data.get('force', False)
+        
+        service = get_announcement_service()
+        client = get_opensearch_client()
+        embeddings = get_embeddings()
+        index_name = _generate_index_name(service.collection_name)
+        
+        # Ensure index exists
+        _setup_index(index_name, dim=384)
+        
+        if not announcements_to_ingest:
+            # Auto-discover all new
+            all_ann = service.fetch_announcements_index()
+            announcements_to_ingest = all_ann[:10]  # Ingest top 10 recent announcements by default
+        
+        results = []
+        for ann in announcements_to_ingest:
+            url = ann.get('url')
+            ann_id = ann.get('announcement_id')
+            title = ann.get('title')
+            
+            logger.info(f"Processing announcement: {title} ({ann_id})")
+            
+            # Scrape content
+            scraped = service.scrape_announcement(url)
+            if not scraped or not scraped.get('success'):
+                logger.warning(f"Skipping announcement {ann_id} - failed to scrape content")
+                results.append({'announcement_id': ann_id, 'status': 'failed', 'reason': 'scrape_failed'})
+                continue
+            
+            # Chunk content
+            chunks = service.chunk_announcement(ann, scraped)
+            if not chunks:
+                logger.warning(f"No chunks extracted for {ann_id}")
+                results.append({'announcement_id': ann_id, 'status': 'skipped', 'reason': 'no_chunks'})
+                continue
+            
+            # Embed & Index into OpenSearch
+            indexed_count = 0
+            for chunk in chunks:
+                chunk_text = chunk['text']
+                chunk_meta = chunk['metadata']
+                
+                try:
+                    emb = embeddings.embed_query(chunk_text)
+                    doc_id = hashlib.md5(f"{ann_id}_{chunk['chunk_index']}_{chunk_text[:50]}".encode()).hexdigest()
+                    
+                    doc_body = {
+                        'text': chunk_text,
+                        'embedding': emb,
+                        'metadata': chunk_meta
+                    }
+                    
+                    client.index(index=index_name, id=doc_id, body=doc_body)
+                    indexed_count += 1
+                except Exception as doc_err:
+                    logger.error(f"Failed to index chunk {chunk['chunk_index']} for {ann_id}: {doc_err}")
+            
+            results.append({
+                'announcement_id': ann_id,
+                'title': title,
+                'status': 'indexed',
+                'chunks_count': indexed_count
+            })
+            
+        return jsonify({
+            'success': True,
+            'processed': len(results),
+            'results': results
+        })
+    except Exception as e:
+        logger.error(f"Error ingesting announcements: {e}")
         return jsonify({'error': str(e)}), 500
 
 

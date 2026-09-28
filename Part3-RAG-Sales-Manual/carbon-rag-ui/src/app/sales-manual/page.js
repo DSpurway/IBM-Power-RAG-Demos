@@ -95,6 +95,12 @@ export default function SalesManualPage() {
   const [bulkIngestionStatus, setBulkIngestionStatus] = useState(null);
   const [bulkIngestionStarted, setBulkIngestionStarted] = useState(false); // Track if we've seen it start
   
+  // Announcements state
+  const [announcements, setAnnouncements] = useState([]);
+  const [announcementsScanning, setAnnouncementsScanning] = useState(false);
+  const [announcementsIngesting, setAnnouncementsIngesting] = useState(false);
+  const [announcementsStatus, setAnnouncementsStatus] = useState('');
+  
   // Query state
   const [queryText, setQueryText] = useState('');
   const [queryResults, setQueryResults] = useState(null);
@@ -455,6 +461,52 @@ export default function SalesManualPage() {
     setShowDetailsModal(true);
   };
 
+  const handleScanAnnouncements = async () => {
+    setAnnouncementsScanning(true);
+    setAnnouncementsStatus('Scanning IBM Power Announcements...');
+    setError('');
+    try {
+      const res = await fetch('/api/rag/announcements-scan', { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        setAnnouncements(data.announcements || []);
+        setAnnouncementsStatus(`Scan complete. Found ${data.total_found} announcements (${data.new_count} new).`);
+      } else {
+        setError(data.error || 'Failed to scan announcements');
+      }
+    } catch (err) {
+      setError(`Error scanning announcements: ${err.message}`);
+    } finally {
+      setAnnouncementsScanning(false);
+    }
+  };
+
+  const handleIngestAnnouncements = async (selectedList = null) => {
+    setAnnouncementsIngesting(true);
+    setAnnouncementsStatus('Ingesting announcements into rag_power_announcements collection...');
+    setError('');
+    try {
+      const payload = selectedList ? { announcements: selectedList } : {};
+      const res = await fetch('/api/rag/announcements-ingest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (data.success) {
+        setAnnouncementsStatus(`Ingestion complete! Processed ${data.processed} announcements.`);
+        // Refresh scan status
+        await handleScanAnnouncements();
+      } else {
+        setError(data.error || 'Failed to ingest announcements');
+      }
+    } catch (err) {
+      setError(`Error ingesting announcements: ${err.message}`);
+    } finally {
+      setAnnouncementsIngesting(false);
+    }
+  };
+
   const handleQuery = async () => {
     if (!queryText.trim()) return;
     
@@ -586,6 +638,7 @@ export default function SalesManualPage() {
         <Tabs selectedIndex={activeTab} onChange={({ selectedIndex }) => setActiveTab(selectedIndex)}>
           <TabList className="tabs-group" aria-label="Sales Manual tabs" contained>
             <Tab>Manage Source Documents</Tab>
+            <Tab>IBM Power Announcements</Tab>
             <Tab>Query Documentation</Tab>
           </TabList>
           
@@ -765,8 +818,89 @@ export default function SalesManualPage() {
                 </Column>
               </Grid>
             </TabPanel>
+
+            {/* Tab 2: IBM Power Announcements */}
+            <TabPanel>
+              <Grid className="tabs-group-content">
+                <Column lg={16}>
+                  <Tile className="tile-spacing">
+                    <h3>IBM Power Announcements & Lifecycle Deltas</h3>
+                    <p className="description-text">
+                      Scan the latest IBM Power announcements (Hardware Withdrawals, Statements of Direction, Enhancements).
+                      These announcement letters are parsed, tagged with applicable MTMs and feature codes, and indexed into the <code>rag_power_announcements</code> collection.
+                    </p>
+
+                    <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem', marginBottom: '1rem' }}>
+                      <Button
+                        kind="secondary"
+                        onClick={handleScanAnnouncements}
+                        disabled={announcementsScanning || announcementsIngesting}
+                      >
+                        {announcementsScanning ? <InlineLoading description="Scanning..." /> : 'Scan Announcements Index'}
+                      </Button>
+                      <Button
+                        kind="primary"
+                        onClick={() => handleIngestAnnouncements()}
+                        disabled={announcementsScanning || announcementsIngesting || announcements.length === 0}
+                      >
+                        {announcementsIngesting ? <InlineLoading description="Ingesting..." /> : 'Ingest Recent Announcements'}
+                      </Button>
+                    </div>
+
+                    {announcementsStatus && (
+                      <InlineNotification
+                        kind="info"
+                        title="Announcements Status"
+                        subtitle={announcementsStatus}
+                        className="section-spacing"
+                      />
+                    )}
+
+                    {announcements.length > 0 && (
+                      <div style={{ marginTop: '1.5rem' }}>
+                        <h4>Discovered Announcements ({announcements.length})</h4>
+                        <div style={{ maxHeight: '400px', overflowY: 'auto', marginTop: '0.75rem' }}>
+                          <Table size="sm">
+                            <TableHead>
+                              <TableRow>
+                                <TableHeader>ID</TableHeader>
+                                <TableHeader>Date</TableHeader>
+                                <TableHeader>Category</TableHeader>
+                                <TableHeader>Title</TableHeader>
+                                <TableHeader>Status</TableHeader>
+                              </TableRow>
+                            </TableHead>
+                            <TableBody>
+                              {announcements.map((ann, idx) => (
+                                <TableRow key={idx}>
+                                  <TableCell><strong>{ann.announcement_id}</strong></TableCell>
+                                  <TableCell>{ann.month} {ann.year}</TableCell>
+                                  <TableCell><Tag type="cyan">{ann.category}</Tag></TableCell>
+                                  <TableCell>
+                                    <a href={ann.url} target="_blank" rel="noopener noreferrer">
+                                      {ann.title}
+                                    </a>
+                                  </TableCell>
+                                  <TableCell>
+                                    {ann.is_ingested ? (
+                                      <Tag type="green">Indexed</Tag>
+                                    ) : (
+                                      <Tag type="cool-gray">New</Tag>
+                                    )}
+                                  </TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </div>
+                      </div>
+                    )}
+                  </Tile>
+                </Column>
+              </Grid>
+            </TabPanel>
             
-            {/* Tab 2: Query Documentation */}
+            {/* Tab 3: Query Documentation */}
             <TabPanel>
               <Grid className="tabs-group-content">
                 <Column lg={16}>
