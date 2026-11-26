@@ -218,6 +218,8 @@ Supersedes "No UI code written yet", "NEXT: scaffold" and "Uncommitted work" in 
 - Backend `Dockerfile` now copies `sources.json`, `ibm_docs_tree.py`, `chunk_tree.py` (the last two were missing for `/ingest-scraped-content`).
 - The old Next.js UI, the `harry-potter-rag` page and the old API proxy routes are gone from the working tree; they remain in git history before commit `4948f99`.
 
+**Update from the user (end of session):** the watsonx Assistant instance still exists, but an API key for it was deleted, so Watson would need a new key (`WATSON_ASSISTANT_API_KEY/URL/ID`; never write the key into the repo). The user has a concern about that deleted key and wants to pick this up in the next session, together with the decision below.
+
 **Open decision (ask the user first)** - how the backend identifies the server in a question. `query_classifier.get_query_intent` only extracts server/MTM/lifecycle field through Watson Assistant (cloud, optional, never configured on the LPAR). Without it the classifier returns no entities and always asks "which server?", even for "When is the E980 withdrawn?". Options: (a) local extractor driven by `sources.json` plus keywords (recommended; no cloud dependency), (b) configure Watson (`WATSON_ASSISTANT_API_KEY/URL/ID`, needs outbound internet), (c) use the Spyre Granite LLM to extract JSON, validated against `sources.json`, (d) defer. Until this is solved, end-to-end questions on the LPAR will mostly come back as clarification prompts.
 
 **Next steps (in order)**
