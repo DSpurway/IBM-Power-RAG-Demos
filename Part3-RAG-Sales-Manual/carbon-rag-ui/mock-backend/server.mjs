@@ -1,6 +1,7 @@
 // Canned stand-in for rag-backend, for UI development only:  npm run mock
 // Serves the same response shapes as POST /api/generate on http://localhost:8401
 import http from 'node:http';
+import { readFileSync } from 'node:fs';
 
 const PORT = process.env.PORT || 8401;
 const IBM = 'https://www.ibm.com/docs/en/announcements/';
@@ -93,6 +94,18 @@ http
       res.end(JSON.stringify(obj));
     };
     if (req.url === '/health') return send(200, { status: 'ok', mock: true });
+    if (req.url === '/api/sources' && req.method === 'GET') {
+      // The real list (generated from the corpus); chunk counts are made up.
+      const data = JSON.parse(
+        readFileSync(new URL('../../rag-backend/sources.json', import.meta.url), 'utf8'),
+      );
+      data.sets.forEach((s) =>
+        s.sources.forEach((src, i) => {
+          src.chunks = i % 9 === 8 ? 0 : 120 + i * 37;
+        }),
+      );
+      return send(200, data);
+    }
     if (req.url === '/api/generate' && req.method === 'POST') {
       let raw = '';
       req.on('data', (c) => (raw += c));

@@ -3,14 +3,24 @@ import {
   Header,
   HeaderGlobalAction,
   HeaderGlobalBar,
+  HeaderMenuItem,
   HeaderName,
+  HeaderNavigation,
 } from '@carbon/react';
 
-const HeaderNav = ({ onNewChat }) => (
+const HeaderNav = ({ view, onNewChat }) => (
   <Header aria-label="IBM Power Sales Manual Assistant">
-    <HeaderName href="/" prefix="IBM">
+    <HeaderName href="#/" prefix="IBM">
       Power Sales Manual Assistant
     </HeaderName>
+    <HeaderNavigation aria-label="Sections">
+      <HeaderMenuItem href="#/" isCurrentPage={view === 'chat'}>
+        Chat
+      </HeaderMenuItem>
+      <HeaderMenuItem href="#/sources" isCurrentPage={view === 'sources'}>
+        Sources
+      </HeaderMenuItem>
+    </HeaderNavigation>
     <HeaderGlobalBar>
       <HeaderGlobalAction
         aria-label="Start new conversation"

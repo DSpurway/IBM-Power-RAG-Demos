@@ -289,6 +289,55 @@ def generate_chunk_id(doc_id, page_content):
     return np.int64(chunk_id)
 
 # ============================================================================
+# SOURCES (documents the assistant knows about)
+# ============================================================================
+
+SOURCES_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'sources.json')
+
+
+def _family_collection_name(family):
+    """Collection name used by /api/ingest-chunks for a family (e.g. 9242-01)."""
+    return f"{OPENSEARCH_DB_PREFIX}_family_{family.lower().replace('-', '_')}"
+
+
+@app.route('/api/sources', methods=['GET'])
+def list_sources():
+    """Read-only list of documentation sets and the IBM pages in them.
+
+    The list comes from sources.json (generated from the scraped corpus by
+    laptop-scraper/make_sources.py). 'chunks' is the number of chunks currently
+    indexed for the source, or null if OpenSearch can't be queried.
+    """
+    try:
+        with open(SOURCES_FILE, encoding='utf-8') as f:
+            data = json.load(f)
+    except FileNotFoundError:
+        return jsonify({'error': 'sources.json not found'}), 404
+
+    try:
+        client = get_opensearch_client()
+    except Exception as e:
+        logger.warning(f"/api/sources: OpenSearch unavailable, chunk counts omitted: {e}")
+        client = None
+
+    for doc_set in data.get('sets', []):
+        for source in doc_set.get('sources', []):
+            chunks = None
+            if client is not None:
+                try:
+                    index_name = _generate_index_name(_family_collection_name(source['family']))
+                    if client.indices.exists(index=index_name):
+                        chunks = client.count(index=index_name)['count']
+                    else:
+                        chunks = 0
+                except Exception as e:
+                    logger.warning(f"/api/sources: count failed for {source['family']}: {e}")
+            source['chunks'] = chunks
+    return jsonify(data)
+
+
+
+# ============================================================================
 # COLLECTION MANAGEMENT ENDPOINTS
 # ============================================================================
 

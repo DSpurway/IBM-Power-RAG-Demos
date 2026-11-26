@@ -1,0 +1,282 @@
+{
+  "sets": [
+    {
+      "id": "sales-manuals",
+      "title": "IBM Power Sales Manuals",
+      "description": "Official IBM announcement Sales Manuals, one page per server family.",
+      "sources": [
+        {
+          "family": "9006-01",
+          "name": "IBM Power System LC922",
+          "mtms": [
+            "9006-22P"
+          ],
+          "url": "https://www.ibm.com/docs/en/announcements/power-system-lc922-9006-22p",
+          "published": "28 January 2020",
+          "scraped_at": "2026-11-25T16:47:14.648548"
+        },
+        {
+          "family": "9006-02",
+          "name": "IBM Power System LC921",
+          "mtms": [
+            "9006-12P"
+          ],
+          "url": "https://www.ibm.com/docs/en/announcements/power-systems-lc921-9006-12p",
+          "published": "28 January 2020",
+          "scraped_at": "2026-11-25T16:47:28.975539"
+        },
+        {
+          "family": "9008-01",
+          "name": "IBM Power System L922",
+          "mtms": [
+            "9008-22L"
+          ],
+          "url": "https://www.ibm.com/docs/en/announcements/power-system-l922-9008-22l",
+          "published": "28 January 2020",
+          "scraped_at": "2026-11-25T16:46:59.599442"
+        },
+        {
+          "family": "9009-01",
+          "name": "IBM Power System S922",
+          "mtms": [
+            "9009-22A"
+          ],
+          "url": "https://www.ibm.com/docs/en/announcements/power-system-s922-9009-22a",
+          "published": "28 January 2020",
+          "scraped_at": "2026-11-25T16:45:01.769420"
+        },
+        {
+          "family": "9009-02",
+          "name": "IBM Power System S924",
+          "mtms": [
+            "9009-42A"
+          ],
+          "url": "https://www.ibm.com/docs/en/announcements/power-system-s924-9009-42a",
+          "published": "28 January 2020",
+          "scraped_at": "2026-11-25T16:44:27.607948"
+        },
+        {
+          "family": "9009-03",
+          "name": "IBM Power System S914",
+          "mtms": [
+            "9009-41A"
+          ],
+          "url": "https://www.ibm.com/docs/en/announcements/power-system-s914-9009-41a",
+          "published": "28 January 2020",
+          "scraped_at": "2026-11-25T16:45:34.811512"
+        },
+        {
+          "family": "9009-04",
+          "name": "IBM Power System S922-G",
+          "mtms": [
+            "9009-22G"
+          ],
+          "url": "https://www.ibm.com/docs/en/announcements/power-system-s922-9009-22g",
+          "published": "11 July 2023",
+          "scraped_at": "2026-11-25T16:45:17.591022"
+        },
+        {
+          "family": "9009-05",
+          "name": "IBM Power System S914-G",
+          "mtms": [
+            "9009-41G"
+          ],
+          "url": "https://www.ibm.com/docs/en/announcements/power-system-s914-9009-41g-2023-10-24",
+          "published": "11 July 2023",
+          "scraped_at": "2026-11-25T16:45:52.759961"
+        },
+        {
+          "family": "9009-06",
+          "name": "IBM Power System S924-G",
+          "mtms": [
+            "9009-42G"
+          ],
+          "url": "https://www.ibm.com/docs/en/announcements/power-system-s924-9009-42g",
+          "published": "11 July 2023",
+          "scraped_at": "2026-11-25T16:44:44.221887"
+        },
+        {
+          "family": "9028-01",
+          "name": "IBM Power S1012",
+          "mtms": [
+            "9028-21B"
+          ],
+          "url": "https://www.ibm.com/docs/en/announcements/family-9028-01-power-s1012",
+          "published": "7 May 2024",
+          "scraped_at": "2026-11-25T16:43:09.945414"
+        },
+        {
+          "family": "9040-01",
+          "name": "IBM Power System E950",
+          "mtms": [
+            "9040-MR9"
+          ],
+          "url": "https://www.ibm.com/docs/en/announcements/power-system-e950-9040-mr9",
+          "published": "11 July 2023",
+          "scraped_at": "2026-11-25T16:44:11.584109"
+        },
+        {
+          "family": "9043-01",
+          "name": "IBM Power E1050",
+          "mtms": [
+            "9043-MRX"
+          ],
+          "url": "https://www.ibm.com/docs/en/announcements/power-e1050-enterprise-midrange-technology-based-server",
+          "published": "14 April 2026",
+          "scraped_at": "2026-11-25T16:42:06.491775"
+        },
+        {
+          "family": "9043-02",
+          "name": "IBM Power E1150",
+          "mtms": [
+            "9043-MRU"
+          ],
+          "url": "https://www.ibm.com/docs/en/announcements/family-904302-power-e1150-enterprise-midrange-technology-based-server-9043-mru",
+          "published": "20 October 2026",
+          "scraped_at": "2026-11-25T16:40:46.818058"
+        },
+        {
+          "family": "9080-03",
+          "name": "IBM Power System E980",
+          "mtms": [
+            "9080-M9S"
+          ],
+          "url": "https://www.ibm.com/docs/en/announcements/power-system-e980-9080-m9s",
+          "published": "14 July 2026",
+          "scraped_at": "2026-11-25T16:43:56.529987"
+        },
+        {
+          "family": "9080-04",
+          "name": "IBM Power E1080",
+          "mtms": [
+            "9080-HEX"
+          ],
+          "url": "https://www.ibm.com/docs/en/announcements/power-e1080-enterprise-server",
+          "published": "14 April 2026",
+          "scraped_at": "2026-11-25T16:41:50.326773"
+        },
+        {
+          "family": "9080-05",
+          "name": "IBM Power E1180",
+          "mtms": [
+            "9080-HEU"
+          ],
+          "url": "https://www.ibm.com/docs/en/announcements/family-908005-power-e1180-enterprise-server-9080-heu",
+          "published": "8 July 2025",
+          "scraped_at": "2026-11-25T16:40:30.845691"
+        },
+        {
+          "family": "9105-01",
+          "name": "IBM Power S1022",
+          "mtms": [
+            "9105-22A"
+          ],
+          "url": "https://www.ibm.com/docs/en/announcements/power-s1022-9105-22a",
+          "published": "9 July 2024",
+          "scraped_at": "2026-11-25T16:42:39.746362"
+        },
+        {
+          "family": "9105-02",
+          "name": "IBM Power S1024",
+          "mtms": [
+            "9105-42A"
+          ],
+          "url": "https://www.ibm.com/docs/en/announcements/power-s1024-9105-42a",
+          "published": "22 April 2025",
+          "scraped_at": "2026-11-25T16:42:23.027387"
+        },
+        {
+          "family": "9105-04",
+          "name": "IBM Power S1014",
+          "mtms": [
+            "9105-41B"
+          ],
+          "url": "https://www.ibm.com/docs/en/announcements/power-s1014-9105-41b",
+          "published": "26 November 2024",
+          "scraped_at": "2026-11-25T16:42:55.227271"
+        },
+        {
+          "family": "9183-01",
+          "name": "IBM Power System IC922",
+          "mtms": [
+            "9183-22X"
+          ],
+          "url": "https://www.ibm.com/docs/en/announcements/power-system-ic922-9183-22x-2021-12-14",
+          "published": "28 January 2020",
+          "scraped_at": "2026-11-25T16:46:42.854596"
+        },
+        {
+          "family": "9223-03",
+          "name": "IBM Power System H922",
+          "mtms": [
+            "9223-22S"
+          ],
+          "url": "https://www.ibm.com/docs/en/announcements/power-system-h922-9223-22s-2023-10-24",
+          "published": "11 July 2023",
+          "scraped_at": "2026-11-25T16:46:27.348972"
+        },
+        {
+          "family": "9223-04",
+          "name": "IBM Power System H924",
+          "mtms": [
+            "9223-42S"
+          ],
+          "url": "https://www.ibm.com/docs/en/announcements/power-system-h924-9223-42s-2023-10-24",
+          "published": "11 July 2023",
+          "scraped_at": "2026-11-25T16:46:09.615402"
+        },
+        {
+          "family": "9242-01",
+          "name": "IBM Power S1112",
+          "mtms": [
+            "9242-21B",
+            "9242-21T"
+          ],
+          "url": "https://www.ibm.com/docs/en/announcements/family-9242-01-power-s1112",
+          "published": "14 July 2026",
+          "scraped_at": "2026-11-25T16:41:32.278990"
+        },
+        {
+          "family": "9786-01",
+          "name": "IBM Power L1022",
+          "mtms": [
+            "9786-22H"
+          ],
+          "url": "https://www.ibm.com/docs/en/announcements/power-l1022-9786-22h",
+          "published": "9 July 2024",
+          "scraped_at": "2026-11-25T16:43:40.434206"
+        },
+        {
+          "family": "9786-02",
+          "name": "IBM Power L1024",
+          "mtms": [
+            "9786-42H"
+          ],
+          "url": "https://www.ibm.com/docs/en/announcements/power-l1024-9786-42h",
+          "published": "9 July 2024",
+          "scraped_at": "2026-11-25T16:43:25.289182"
+        },
+        {
+          "family": "9824-01",
+          "name": "IBM Power S1122",
+          "mtms": [
+            "9824-22A"
+          ],
+          "url": "https://www.ibm.com/docs/en/announcements/family-982401-power-s1122-9824-22a",
+          "published": "12 May 2026",
+          "scraped_at": "2026-11-25T16:41:17.169800"
+        },
+        {
+          "family": "9824-02",
+          "name": "IBM Power S1124",
+          "mtms": [
+            "9824-42A"
+          ],
+          "url": "https://www.ibm.com/docs/en/announcements/family-982402-power-s1124-9824-42a",
+          "published": "12 May 2026",
+          "scraped_at": "2026-11-25T16:41:02.077935"
+        }
+      ]
+    }
+  ]
+}

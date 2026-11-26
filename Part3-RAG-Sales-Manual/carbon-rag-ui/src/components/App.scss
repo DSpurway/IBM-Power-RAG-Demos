@@ -55,3 +55,13 @@
   gap: 0.5rem;
   flex-wrap: wrap;
 }
+
+.sources-intro {
+  margin: 1rem 0;
+  color: var(--cds-text-secondary);
+}
+
+[hidden] {
+  display: none !important;
+}
+
