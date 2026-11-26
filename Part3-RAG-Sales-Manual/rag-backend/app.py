@@ -292,12 +292,7 @@ def generate_chunk_id(doc_id, page_content):
 # SOURCES (documents the assistant knows about)
 # ============================================================================
 
-SOURCES_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'sources.json')
-
-
-def _family_collection_name(family):
-    """Collection name used by /api/ingest-chunks for a family (e.g. 9242-01)."""
-    return f"{OPENSEARCH_DB_PREFIX}_family_{family.lower().replace('-', '_')}"
+from server_mtm_mapper import SOURCES_FILE, get_collection_name_for_family
 
 
 @app.route('/api/sources', methods=['GET'])
@@ -325,7 +320,7 @@ def list_sources():
             chunks = None
             if client is not None:
                 try:
-                    index_name = _generate_index_name(_family_collection_name(source['family']))
+                    index_name = _generate_index_name(get_collection_name_for_family(source['family']))
                     if client.indices.exists(index=index_name):
                         chunks = client.count(index=index_name)['count']
                     else:
@@ -361,21 +356,12 @@ def list_collections():
                 logger.error(f"Failed to get any indices: {e2}")
                 indices = {}
         
-        # Build a reverse mapping: try to match hashed index names to known MTM-based collection names
-        # For IBM Power servers, collection names are based on MTM: mtm_9080_heu, mtm_9009_42a, etc.
-        # Note: This excludes other collections like Harry Potter which are used in other parts of the demo
-        known_mtms = [
-            # POWER11
-            "9080-HEU", "9043-MRU", "9824-42A", "9824-22A", "9028-21N",
-            # POWER10
-            "9080-HEX", "9043-MRX", "9105-42A", "9105-22A",
-            "9105-41B", "9028-21B", "9786-42H", "9786-22H",
-            # POWER9
-            "9080-M9S", "9040-MR9", "9009-42A", "9009-42G",
-            "9009-22A", "9009-22G", "9009-41A", "9009-41G",
-            "9223-42S", "9223-22S", "9183-22X", "9008-22L",
-            "9006-22P", "9006-12P"
-        ]
+        # Build a reverse mapping: try to match hashed index names to known collection names.
+        # Sales Manual collections are per family (rag_family_9009_02, ...); the MTMs come from
+        # sources.json. Other collections (e.g. Harry Potter) are excluded.
+        from server_mtm_mapper import MTM_FAMILY_MAP
+        # One MTM per family is enough: MTMs of the same family share one collection.
+        known_mtms = list({family: mtm for mtm, family in MTM_FAMILY_MAP.items()}.values())
         
         collections_map = {}
         collections_details = {}
@@ -385,8 +371,9 @@ def list_collections():
         
         # Build a map of all possible collection names to their expected hashed index names
         mtm_to_expected_index = {}
+        from server_mtm_mapper import get_collection_name_for_mtm
         for mtm in known_mtms:
-            collection_name = f"{OPENSEARCH_DB_PREFIX}_mtm_{mtm.lower().replace('-', '_')}"
+            collection_name = get_collection_name_for_mtm(mtm)
             expected_index = _generate_index_name(collection_name)
             mtm_to_expected_index[mtm] = {
                 'collection_name': collection_name,
@@ -1829,11 +1816,11 @@ def generate():
                 }), 400
             
             # Determine collection name from server model
-            from server_mtm_mapper import get_mtm_for_model
+            from server_mtm_mapper import get_mtm_for_model, get_collection_name_for_mtm
             server_mtm = get_mtm_for_model(server_model)
             
             if server_mtm:
-                collection_name = f"{OPENSEARCH_DB_PREFIX}_mtm_{server_mtm.lower().replace('-', '_')}"
+                collection_name = get_collection_name_for_mtm(server_mtm)
             else:
                 collection_name = f"{OPENSEARCH_DB_PREFIX}_power_{server_model.lower()}"
             
@@ -2034,11 +2021,11 @@ def generate():
                 }), 400
             
             # Determine collection name
-            from server_mtm_mapper import get_mtm_for_model
+            from server_mtm_mapper import get_mtm_for_model, get_collection_name_for_mtm
             server_mtm = get_mtm_for_model(server_model)
             
             if server_mtm:
-                collection_name = f"{OPENSEARCH_DB_PREFIX}_mtm_{server_mtm.lower().replace('-', '_')}"
+                collection_name = get_collection_name_for_mtm(server_mtm)
             else:
                 collection_name = f"{OPENSEARCH_DB_PREFIX}_power_{server_model.lower()}"
             
@@ -2199,11 +2186,11 @@ def generate():
         
         if server_model:
             # Get MTM for the server model
-            from server_mtm_mapper import get_mtm_for_model
+            from server_mtm_mapper import get_mtm_for_model, get_collection_name_for_mtm
             server_mtm = get_mtm_for_model(server_model)
             
             if server_mtm:
-                collection_name = f"{OPENSEARCH_DB_PREFIX}_mtm_{server_mtm.lower().replace('-', '_')}"
+                collection_name = get_collection_name_for_mtm(server_mtm)
                 logger.info(f"Using collection for {server_model} ({server_mtm}): {collection_name}")
             else:
                 collection_name = f"{OPENSEARCH_DB_PREFIX}_power_{server_model.lower()}"
