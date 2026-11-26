@@ -10,6 +10,8 @@ This file provides guidance to agents when working with code in this repository.
 
 **Script Preference**: Use Git Bash scripts (.sh) instead of PowerShell (.ps1). PowerShell has formatting issues and Linux command incompatibilities. Never use `&&` in PowerShell - use `;` instead.
 
+**Python on Windows**: On Windows, use `python -c` only for short, single-line commands with simple quoting. For multiline Python or code with nested quotes, use the file-editing tool to write a temporary `.py` file, then run it with `python` from the intended working directory. Do this on the first attempt.
+
 **GitHub Sync Required**: All changes must be synced to GitHub for reproducibility when Techzone environments expire and for team collaboration.
 
 ## Deployed Services (DO NOT REDEPLOY)
