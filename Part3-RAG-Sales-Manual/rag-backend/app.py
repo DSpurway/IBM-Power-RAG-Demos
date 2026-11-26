@@ -1283,6 +1283,122 @@ def search():
 # SCRAPED CONTENT INGESTION ENDPOINT
 # ============================================================================
 
+@app.route('/api/ingest-chunks', methods=['POST'])
+@app.route('/ingest-chunks', methods=['POST'])
+def ingest_chunks():
+    """
+    Ingest pre-computed chunks (from chunk_tree.py / local corpus) directly into OpenSearch.
+    Accepts: {
+        'collection_name': '...', # optional, defaults to family-based or mtm-based
+        'family': '9080-03',
+        'mtms': ['9080-M9S'],
+        'server_name': 'IBM Power System E980',
+        'url': '...',
+        'published': '...',
+        'chunks': [ { 'text': '...', 'metadata': { ... } } ]
+    }
+    """
+    try:
+        from opensearchpy.helpers import bulk
+        data = request.get_json()
+        if not data or 'chunks' not in data:
+            return jsonify({'error': 'Invalid request: chunks list required'}), 400
+        
+        chunks = data.get('chunks', [])
+        if not chunks:
+            return jsonify({'error': 'No chunks provided'}), 400
+            
+        family = data.get('family')
+        mtms = data.get('mtms', [])
+        mtm = data.get('mtm') or (mtms[0] if mtms else None)
+        server_name = data.get('server_name', 'Untitled')
+        url = data.get('url', 'unknown')
+        collection_name = data.get('collection_name')
+        
+        if not collection_name:
+            if family:
+                collection_name = f"{OPENSEARCH_DB_PREFIX}_family_{family.lower().replace('-', '_')}"
+            elif mtm:
+                collection_name = f"{OPENSEARCH_DB_PREFIX}_mtm_{mtm.lower().replace('-', '_')}"
+            else:
+                collection_name = f"{OPENSEARCH_DB_PREFIX}_ibm_docs"
+                
+        logger.info(f"Ingesting {len(chunks)} pre-computed chunks into collection: {collection_name} (family: {family}, mtms: {mtms})")
+        
+        # Log chunk distribution by type
+        chunk_types = {}
+        for chunk in chunks:
+            chunk_type = chunk.get('metadata', {}).get('section_type', 'content_section')
+            chunk_types[chunk_type] = chunk_types.get(chunk_type, 0) + 1
+        
+        client = get_opensearch_client()
+        embeddings = get_embeddings()
+        
+        index_name = _generate_index_name(collection_name)
+        _setup_index(index_name, embeddings.client.get_sentence_embedding_dimension())
+        
+        # Batch embed and bulk index chunks (batches of 100)
+        batch_size = 100
+        indexed_count = 0
+        failed_count = 0
+        
+        for batch_start in range(0, len(chunks), batch_size):
+            batch = chunks[batch_start:batch_start + batch_size]
+            texts = [c['text'] for c in batch]
+            
+            try:
+                batch_embeddings = embeddings.embed_documents(texts)
+            except Exception as e:
+                logger.warning(f"Batch embedding failed ({e}), falling back to embed_query per chunk")
+                batch_embeddings = [embeddings.embed_query(t) for t in texts]
+                
+            actions = []
+            for i, chunk in enumerate(batch):
+                global_idx = batch_start + i
+                meta = chunk.get('metadata', {})
+                source_val = meta.get('source', url)
+                sec_title = meta.get('section_title', '')
+                doc_id = hashlib.md5(f"{source_val}_{sec_title}_{global_idx}".encode()).hexdigest()
+                
+                actions.append({
+                    "_index": index_name,
+                    "_id": doc_id,
+                    "_source": {
+                        "text": chunk["text"],
+                        "embedding": batch_embeddings[i],
+                        "metadata": meta
+                    }
+                })
+                
+            try:
+                success_n, errors = bulk(client, actions, refresh=False, stats_only=True)
+                indexed_count += success_n
+                failed_count += len(actions) - success_n
+            except Exception as e:
+                logger.error(f"Bulk index error on batch {batch_start}: {e}")
+                failed_count += len(actions)
+                
+        client.indices.refresh(index=index_name)
+        logger.info(f"Ingestion complete for {collection_name}: {indexed_count} indexed, {failed_count} failed")
+        
+        return jsonify({
+            'success': True,
+            'collection': collection_name,
+            'indexed': indexed_count,
+            'failed': failed_count,
+            'chunk_distribution': chunk_types,
+            'page_title': server_name,
+            'family': family,
+            'mtms': mtms,
+            'source_url': url
+        })
+    except Exception as e:
+        logger.error(f"Error in ingest_chunks: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/ingest-scraped-content', methods=['POST'])
 def ingest_scraped_content():
     """
@@ -1290,8 +1406,7 @@ def ingest_scraped_content():
     Preserves table structure and creates semantic chunks for hybrid query system
     """
     try:
-        from sales_manual_chunker import SalesManualChunker
-        
+        from opensearchpy.helpers import bulk
         data = request.get_json()
         
         if not data or not data.get('success'):
@@ -1300,39 +1415,54 @@ def ingest_scraped_content():
         url = data.get('url', 'unknown')
         page_title = data.get('page_title', 'Untitled')
         full_text = data.get('full_text', '')
-        sections = data.get('sections', [])  # Get structured sections
+        html = data.get('html', '')
+        sections = data.get('sections', [])
         server_model = data.get('server_model', None)
         mtm = data.get('mtm', None)
+        force = data.get('force', False)
         
-        if not full_text:
+        if html:
+            # V2 Tree-based chunker
+            from ibm_docs_tree import parse_page
+            from chunk_tree import chunk_page
+            page = parse_page(html)
+            page['url'] = url
+            if server_model and not page.get('server_name_hint'):
+                page['server_name_hint'] = server_model
+            chunks, skipped = chunk_page(page)
+            family = page.get('family')
+            mtms = page.get('mtms', [])
+            page_title = page.get('page_title', page_title)
+            mtm = page.get('mtm', mtm)
+            logger.info(f"V2 tree chunking created {len(chunks)} chunks (family={family}, mtms={mtms})")
+        elif not full_text:
             return jsonify({'error': 'No content found in scraped data'}), 400
+        else:
+            # Fallback for legacy text payload
+            from sales_manual_chunker import SalesManualChunker
+            chunker = SalesManualChunker(max_chunk_size=1500, overlap=100)
+            chunks = chunker.chunk_sales_manual(
+                full_text=full_text,
+                server_name=page_title,
+                mtm=mtm or server_model or 'unknown',
+                url=url,
+                sections=sections
+            )
+            family = None
+            mtms = [mtm] if mtm else []
         
         logger.info(f"Ingesting scraped content from: {url}")
-        logger.info(f"Server: {page_title}, MTM: {mtm}, Full text length: {len(full_text)} characters")
-        logger.info(f"Structured sections available: {len(sections)}")
+        logger.info(f"Server: {page_title}, MTM: {mtm}, Chunks: {len(chunks)}")
         
-        # Create collection name based on MTM
-        if mtm:
+        # Determine collection name
+        if family:
+            collection_name = f"{OPENSEARCH_DB_PREFIX}_family_{family.lower().replace('-', '_')}"
+        elif mtm:
             collection_name = f"{OPENSEARCH_DB_PREFIX}_mtm_{mtm.lower().replace('-', '_')}"
-            logger.info(f"Using MTM-based collection: {collection_name}")
         elif server_model:
             collection_name = f"{OPENSEARCH_DB_PREFIX}_power_{server_model.lower().replace('-', '_')}"
-            logger.info(f"Using server-specific collection: {collection_name}")
         else:
             collection_name = f"{OPENSEARCH_DB_PREFIX}_ibm_docs"
-            logger.warning(f"No MTM/server_model provided, using generic collection: {collection_name}")
-        
-        # Initialize smart chunker
-        chunker = SalesManualChunker(max_chunk_size=1500, overlap=100)
-        
-        # Apply smart hierarchical chunking with structured sections
-        chunks = chunker.chunk_sales_manual(
-            full_text=full_text,
-            server_name=page_title,
-            mtm=mtm or server_model or 'unknown',
-            url=url,
-            sections=sections  # Pass structured sections
-        )
         
         logger.info(f"Smart chunking created {len(chunks)} chunks")
         
@@ -1352,35 +1482,70 @@ def ingest_scraped_content():
         index_name = _generate_index_name(collection_name)
         _setup_index(index_name, embeddings.client.get_sentence_embedding_dimension())
         
-        # Index chunks
+        # Check existing content hash if not forced
+        new_content_hash = chunks[0].get('metadata', {}).get('content_hash') if chunks else None
+        if not force and new_content_hash and client.indices.exists(index=index_name):
+            try:
+                search_res = client.search(
+                    index=index_name,
+                    body={"size": 1, "query": {"match_all": {}}, "_source": ["metadata.content_hash", "content_hash"]}
+                )
+                if search_res['hits']['total']['value'] > 0:
+                    src = search_res['hits']['hits'][0]['_source']
+                    existing_hash = src.get('content_hash') or src.get('metadata', {}).get('content_hash')
+                    if existing_hash == new_content_hash:
+                        logger.info(f"Content hash {new_content_hash[:8]} matches existing index. Skipping re-ingestion.")
+                        return jsonify({
+                            'success': True,
+                            'skipped': True,
+                            'reason': 'unchanged',
+                            'collection': collection_name,
+                            'content_hash': new_content_hash,
+                            'page_title': page_title
+                        })
+            except Exception as e:
+                logger.warning(f"Error checking existing hash: {e}")
+        
+        # Batch embed and bulk index chunks (batches of 100)
+        batch_size = 100
         indexed_count = 0
         failed_count = 0
         
-        for i, chunk in enumerate(chunks):
+        for batch_start in range(0, len(chunks), batch_size):
+            batch = chunks[batch_start:batch_start + batch_size]
+            texts = [c['text'] for c in batch]
+            
             try:
-                # Generate embedding
-                embedding = embeddings.embed_query(chunk['text'])
-                
-                # Create document ID
-                doc_id = hashlib.md5(
-                    f"{chunk['metadata']['source']}_{chunk['metadata']['section_title']}_{i}".encode()
-                ).hexdigest()
-                
-                # Index document
-                client.index(
-                    index=index_name,
-                    id=doc_id,
-                    body={
-                        'text': chunk['text'],
-                        'embedding': embedding,
-                        'metadata': chunk['metadata']
-                    }
-                )
-                indexed_count += 1
-                
+                batch_embeddings = embeddings.embed_documents(texts)
             except Exception as e:
-                logger.error(f"Failed to index chunk {i}: {e}")
-                failed_count += 1
+                logger.warning(f"Batch embedding failed ({e}), falling back to embed_query")
+                batch_embeddings = [embeddings.embed_query(t) for t in texts]
+                
+            actions = []
+            for i, chunk in enumerate(batch):
+                global_idx = batch_start + i
+                meta = chunk.get('metadata', {})
+                source_val = meta.get('source', url)
+                sec_title = meta.get('section_title', '')
+                doc_id = hashlib.md5(f"{source_val}_{sec_title}_{global_idx}".encode()).hexdigest()
+                
+                actions.append({
+                    "_index": index_name,
+                    "_id": doc_id,
+                    "_source": {
+                        "text": chunk["text"],
+                        "embedding": batch_embeddings[i],
+                        "metadata": meta
+                    }
+                })
+                
+            try:
+                success_n, errors = bulk(client, actions, refresh=False, stats_only=True)
+                indexed_count += success_n
+                failed_count += len(actions) - success_n
+            except Exception as e:
+                logger.error(f"Bulk index error on batch {batch_start}: {e}")
+                failed_count += len(actions)
         
         # Refresh index
         client.indices.refresh(index=index_name)
@@ -1395,7 +1560,10 @@ def ingest_scraped_content():
             'chunk_distribution': chunk_types,
             'page_title': page_title,
             'source_url': url,
-            'mtm': mtm
+            'family': family,
+            'mtms': mtms,
+            'mtm': mtm,
+            'content_hash': new_content_hash
         })
         
     except Exception as e:

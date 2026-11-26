@@ -1,0 +1,2 @@
+# Parsed trees are regenerable from the saved HTML (python scrape_to_corpus.py --reparse <mtm>)
+corpus/*.json

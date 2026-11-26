@@ -227,6 +227,8 @@ class TableLookupService:
                 query_parts.extend(['available', 'availability', 'general availability'])
             elif 'withdraw' in field_lower or 'eom' in field_lower:
                 query_parts.extend(['withdrawn', 'withdrawal', 'marketing withdrawn', 'end of marketing'])
+            elif 'support_level' in field_lower or 'support changed' in field_lower:
+                query_parts.extend(['support level changed', 'support changed', 'end of standard support'])
             elif 'discontinue' in field_lower or 'eos' in field_lower or 'support' in field_lower:
                 query_parts.extend(['discontinued', 'end of support', 'end of service', 'support discontinued'])
         else:
@@ -438,6 +440,7 @@ class TableLookupService:
         in_lifecycle_section = False
         mtm_pattern = r'\d{4}-[A-Z0-9]{3}'  # Pattern for MTM like 9009-42A
         found_mtms = []
+        col_map = {}
         
         for i, line in enumerate(lines):
             logger.info(f"Processing line {i}: {line[:100]}")  # Show each line
@@ -448,8 +451,38 @@ class TableLookupService:
                 logger.info(f"Found Product lifecycle dates section at line {i}, in_lifecycle_section={in_lifecycle_section}")
                 continue
             
-            # If we're in the lifecycle section, look for MTM rows
+            # If we're in the lifecycle section, detect header column structure if present
             if in_lifecycle_section:
+                if ('announced' in line_lower or 'available' in line_lower) and not re.search(mtm_pattern, line):
+                    # Header row detected
+                    if '|' in line:
+                        header_cols = [c.strip() for c in line.split('|')]
+                        if header_cols and header_cols[0] == '':
+                            header_cols = header_cols[1:]
+                        if header_cols and header_cols[-1] == '':
+                            header_cols = header_cols[:-1]
+                    else:
+                        header_cols = [c.strip() for c in re.split(r'\s{2,}', line) if c.strip()]
+                    
+                    for idx, col in enumerate(header_cols):
+                        c_low = col.lower()
+                        if 'type' in c_low or 'model' in c_low or 'mtm' in c_low:
+                            col_map['mtm'] = idx
+                        elif 'announc' in c_low:
+                            col_map['announced'] = idx
+                        elif 'avail' in c_low:
+                            col_map['available'] = idx
+                        elif 'withdr' in c_low or 'market' in c_low:
+                            col_map['withdrawn'] = idx
+                        elif 'support' in c_low and ('level' in c_low or 'changed' in c_low or 'standard' in c_low):
+                            col_map['support_level_changed'] = idx
+                        elif 'discontin' in c_low or 'service' in c_low or 'end of service' in c_low:
+                            col_map['discontinued'] = idx
+                        elif 'support' in c_low:
+                            col_map['support_level_changed'] = idx
+                    logger.info(f"Detected lifecycle table column map from header: {col_map}")
+                    continue
+
                 # Check if line contains an MTM pattern
                 mtm_match = re.search(mtm_pattern, line)
                 if not mtm_match:
@@ -466,112 +499,157 @@ class TableLookupService:
                 
                 logger.info(f"Found table row with MTM {line_mtm}: {line}")
                 
-                # Split by | or multiple spaces to extract table cells
-                cells = [cell.strip() for cell in re.split(r'\||\s{2,}', line) if cell.strip()]
+                # Split table cells properly without dropping empty cells in markdown tables
+                if '|' in line:
+                    cells = [cell.strip() for cell in line.split('|')]
+                    if cells and cells[0] == '':
+                        cells = cells[1:]
+                    if cells and cells[-1] == '':
+                        cells = cells[:-1]
+                else:
+                    cells = [cell.strip() for cell in re.split(r'\s{2,}', line) if cell.strip()]
+                
                 logger.info(f"Extracted cells: {cells}")
                 
-                # Expected format:
-                # 5-column (classic): [MTM, Announced, Available, Marketing withdrawn, Service discontinued]
-                # 6-column (updated): [MTM, Announced, Available, Marketing withdrawn, Support level changed, Service discontinued]
+                announced = '-'
+                available = '-'
+                withdrawn = '-'
+                support_level_changed = '-'
+                discontinued = '-'
                 
-                # Find cells that look like ISO dates (2018-02-13), human dates (31 January 2026), or "-"
-                date_iso_pattern = r'^\d{4}-\d{2}-\d{2}$'
-                date_text_pattern = r'^\d{1,2}\s+[A-Za-z]+\s+\d{4}$'
-                date_cells = []
-                for cell in cells:
-                    if re.match(date_iso_pattern, cell) or re.match(date_text_pattern, cell) or cell == '-':
-                        date_cells.append(cell)
-                
-                logger.info(f"Found date cells: {date_cells}")
-                
-                if len(date_cells) >= 3:  # At minimum: Announced, Available, Marketing withdrawn
-                    announced = date_cells[0] if len(date_cells) > 0 else '-'
-                    available = date_cells[1] if len(date_cells) > 1 else '-'
-                    withdrawn = date_cells[2] if len(date_cells) > 2 else '-'
-                    
+                if col_map:
+                    # Use header column mapping
+                    if 'announced' in col_map and col_map['announced'] < len(cells) and cells[col_map['announced']]:
+                        announced = cells[col_map['announced']]
+                    if 'available' in col_map and col_map['available'] < len(cells) and cells[col_map['available']]:
+                        available = cells[col_map['available']]
+                    if 'withdrawn' in col_map and col_map['withdrawn'] < len(cells) and cells[col_map['withdrawn']]:
+                        withdrawn = cells[col_map['withdrawn']]
+                    if 'support_level_changed' in col_map and col_map['support_level_changed'] < len(cells) and cells[col_map['support_level_changed']]:
+                        support_level_changed = cells[col_map['support_level_changed']]
+                    if 'discontinued' in col_map and col_map['discontinued'] < len(cells) and cells[col_map['discontinued']]:
+                        discontinued = cells[col_map['discontinued']]
+                elif len(cells) >= 6:
+                    # 6-column table: [MTM, Announced, Available, Marketing withdrawn, Support level changed, Service discontinued]
+                    announced = cells[1] or '-'
+                    available = cells[2] or '-'
+                    withdrawn = cells[3] or '-'
+                    support_level_changed = cells[4] or '-'
+                    discontinued = cells[5] or '-'
+                elif len(cells) == 5:
+                    # 5-column table: [MTM, Announced, Available, Marketing withdrawn, Service discontinued]
+                    announced = cells[1] or '-'
+                    available = cells[2] or '-'
+                    withdrawn = cells[3] or '-'
                     support_level_changed = '-'
-                    discontinued = '-'
-                    
+                    discontinued = cells[4] or '-'
+                else:
+                    # Fallback extracting date patterns
+                    date_iso_pattern = r'^\d{4}-\d{2}-\d{2}$'
+                    date_text_pattern = r'^\d{1,2}\s+[A-Za-z]+\s+\d{4}$'
+                    date_cells = []
+                    for cell in cells:
+                        if re.match(date_iso_pattern, cell) or re.match(date_text_pattern, cell) or cell == '-':
+                            date_cells.append(cell)
                     if len(date_cells) >= 5:
-                        # 6-column table: index 3 is Support level changed, index 4 is Service discontinued
+                        announced = date_cells[0]
+                        available = date_cells[1]
+                        withdrawn = date_cells[2]
                         support_level_changed = date_cells[3]
                         discontinued = date_cells[4]
                     elif len(date_cells) == 4:
-                        # 5-column table: index 3 is Service discontinued
+                        announced = date_cells[0]
+                        available = date_cells[1]
+                        withdrawn = date_cells[2]
                         discontinued = date_cells[3]
+                    elif len(date_cells) >= 3:
+                        announced = date_cells[0]
+                        available = date_cells[1]
+                        withdrawn = date_cells[2]
+                
+                # Determine effective end of standard support date
+                # Support level changed = End of Standard Support
+                # Service discontinued = End of Extended Support / Total Service Discontinuation
+                effective_end_of_support = support_level_changed if support_level_changed != '-' else discontinued
+                
+                # Store this MTM's data
+                mtm_data = {
+                    'mtm': line_mtm,
+                    'announced': announced,
+                    'available': available,
+                    'withdrawn': withdrawn,
+                    'support_level_changed': support_level_changed,
+                    'discontinued': discontinued,
+                    'effective_end_of_support': effective_end_of_support
+                }
+                found_mtms.append(mtm_data)
+                
+                # If we have a specific MTM, return immediately with improved format
+                if server_mtm:
+                    logger.info(f"Found specific MTM {server_mtm} in table, formatting response")
                     
-                    # Determine effective end of standard support date
-                    # If support_level_changed is set, standard support ended then (even if service discontinued is '-')
-                    effective_end_of_support = support_level_changed if support_level_changed != '-' else discontinued
+                    # Build the full lifecycle table for this MTM
+                    table_lines = [
+                        f"\nLifecycle Information for {line_mtm}:",
+                        f"• Announced: {announced if announced != '-' else 'Not yet announced'}",
+                        f"• Available: {available if available != '-' else 'Not yet announced'}",
+                        f"• Marketing Withdrawn: {withdrawn if withdrawn != '-' else 'Not yet announced'}"
+                    ]
+                    if support_level_changed != '-':
+                        table_lines.append(f"• Support Level Changed (End of Standard Support): {support_level_changed}")
+                    table_lines.append(f"• Service Discontinued (End of Extended Support): {discontinued if discontinued != '-' else 'Not yet announced'}")
                     
-                    # Store this MTM's data
-                    mtm_data = {
-                        'mtm': line_mtm,
-                        'announced': announced,
-                        'available': available,
-                        'withdrawn': withdrawn,
-                        'support_level_changed': support_level_changed,
-                        'discontinued': discontinued,
-                        'effective_end_of_support': effective_end_of_support
-                    }
-                    found_mtms.append(mtm_data)
-                    
-                    # If we have a specific MTM, return immediately with improved format
-                    if server_mtm:
-                        logger.info(f"Found specific MTM {server_mtm} in table, formatting response")
-                        
-                        # Build the full lifecycle table for this MTM
-                        table_lines = [
-                            f"\nLifecycle Information for {line_mtm}:",
-                            f"• Announced: {announced if announced != '-' else 'Not yet announced'}",
-                            f"• Available: {available if available != '-' else 'Not yet announced'}",
-                            f"• Marketing Withdrawn: {withdrawn if withdrawn != '-' else 'Not yet announced'}"
-                        ]
-                        if support_level_changed != '-':
-                            table_lines.append(f"• Support Level Changed (End of Standard Support): {support_level_changed}")
-                        table_lines.append(f"• Service Discontinued: {discontinued if discontinued != '-' else 'Not yet announced'}")
-                        
-                        # If specific field requested, provide direct answer first
-                        if field:
-                            field_lower = field.lower()
-                            note = ""
-                            if 'announce' in field_lower:
-                                date_val = announced
-                                field_name = "Announcement date"
-                            elif 'available' in field_lower:
-                                date_val = available
-                                field_name = "Availability date"
-                            elif 'withdraw' in field_lower:
-                                date_val = withdrawn
-                                field_name = "Marketing Withdrawal date"
-                            elif 'support_level' in field_lower or 'support changed' in field_lower:
-                                date_val = support_level_changed
-                                field_name = "Support Level Changed date"
-                                if date_val != '-':
-                                    note = " (Standard base support ended; Service Extension / TLS terms apply)."
-                            elif 'discontinue' in field_lower or 'end_of_support' in field_lower or 'support' in field_lower:
-                                date_val = effective_end_of_support
-                                if support_level_changed != '-' and discontinued == '-':
-                                    field_name = "End of Standard Support (Support Level Changed)"
-                                    note = " (Standard base support ended on this date; Service Extension / TLS support may be available)."
-                                else:
-                                    field_name = "Service Discontinuation date"
-                            else:
-                                date_val = None
-                                field_name = None
-                            
-                            if field_name:
-                                if date_val == '-' or not date_val:
-                                    answer = f"The {field_name} for the {line_mtm} has not been announced yet."
-                                else:
-                                    answer = f"The {field_name} for the {line_mtm} is {date_val}.{note}"
-                                
-                                # Add full table for reference
+                    # If specific field requested, provide direct answer first
+                    if field:
+                        field_lower = field.lower()
+                        note = ""
+                        if 'announce' in field_lower:
+                            date_val = announced
+                            field_name = "Announcement date"
+                        elif 'available' in field_lower:
+                            date_val = available
+                            field_name = "Availability date"
+                        elif 'withdraw' in field_lower:
+                            date_val = withdrawn
+                            field_name = "Marketing Withdrawal date"
+                        elif 'support_level' in field_lower or 'support changed' in field_lower:
+                            date_val = support_level_changed
+                            field_name = "Support Level Changed date (End of Standard Support)"
+                            if date_val != '-':
+                                note = " (Standard base support ended; Service Extension / TLS terms apply)."
+                        elif 'discontinue' in field_lower or 'service' in field_lower:
+                            date_val = discontinued
+                            field_name = "Service Discontinuation date (End of Extended Support)"
+                            if date_val == '-' and support_level_changed != '-':
+                                note = f" (End of Standard Support was {support_level_changed}; Service Discontinuation has not yet been announced)."
+                        elif 'end_of_support' in field_lower or 'support' in field_lower:
+                            if support_level_changed != '-' and discontinued != '-':
+                                answer = f"For the {line_mtm}, End of Standard Support (Support Level Changed) was {support_level_changed}, and Service Discontinuation (End of Extended Support) is {discontinued}."
                                 answer += "\n" + '\n'.join(table_lines)
                                 return answer
+                            elif support_level_changed != '-':
+                                date_val = support_level_changed
+                                field_name = "End of Standard Support (Support Level Changed)"
+                                note = " (Standard base support ended on this date; Service Extension / TLS support may be available. Service Discontinuation has not yet been announced)."
+                            else:
+                                date_val = discontinued
+                                field_name = "Service Discontinuation date"
+                        else:
+                            date_val = None
+                            field_name = None
                         
-                        # Return all dates if no specific field
-                        return '\n'.join(table_lines)
+                        if field_name:
+                            if date_val == '-' or not date_val:
+                                answer = f"The {field_name} for the {line_mtm} has not been announced yet.{note}"
+                            else:
+                                answer = f"The {field_name} for the {line_mtm} is {date_val}.{note}"
+                            
+                            # Add full table for reference
+                            answer += "\n" + '\n'.join(table_lines)
+                            return answer
+                    
+                    # Return all dates if no specific field
+                    return '\n'.join(table_lines)
         
         # If we requested a specific MTM but didn't find it, return error
         if server_mtm and not found_mtms:
@@ -599,15 +677,29 @@ class TableLookupService:
                     elif 'withdraw' in field_lower:
                         date_val = mtm_data['withdrawn']
                         result_lines.append(f"  Marketing Withdrawn: {date_val if date_val != '-' else 'Not announced'}")
-                    elif 'discontinue' in field_lower or 'end_of_support' in field_lower:
+                    elif 'support_level' in field_lower or 'support changed' in field_lower:
+                        date_val = mtm_data['support_level_changed']
+                        result_lines.append(f"  Support Level Changed (End of Standard Support): {date_val if date_val != '-' else 'Not announced'}")
+                    elif 'discontinue' in field_lower or 'service' in field_lower:
                         date_val = mtm_data['discontinued']
-                        result_lines.append(f"  Service Discontinued: {date_val if date_val != '-' else 'Not announced'}")
+                        result_lines.append(f"  Service Discontinued (End of Extended Support): {date_val if date_val != '-' else 'Not announced'}")
+                    elif 'end_of_support' in field_lower or 'support' in field_lower:
+                        sup = mtm_data['support_level_changed']
+                        disc = mtm_data['discontinued']
+                        if sup != '-' and disc != '-':
+                            result_lines.append(f"  End of Standard Support: {sup}, Service Discontinued: {disc}")
+                        elif sup != '-':
+                            result_lines.append(f"  End of Standard Support (Support Level Changed): {sup} (Service Discontinuation: Not announced)")
+                        else:
+                            result_lines.append(f"  Service Discontinued: {disc if disc != '-' else 'Not announced'}")
                 else:
                     # Show all dates
                     result_lines.append(f"  Announced: {mtm_data['announced'] if mtm_data['announced'] != '-' else 'Not announced'}")
                     result_lines.append(f"  Available: {mtm_data['available'] if mtm_data['available'] != '-' else 'Not announced'}")
                     result_lines.append(f"  Marketing Withdrawn: {mtm_data['withdrawn'] if mtm_data['withdrawn'] != '-' else 'Not announced'}")
-                    result_lines.append(f"  Service Discontinued: {mtm_data['discontinued'] if mtm_data['discontinued'] != '-' else 'Not announced'}")
+                    if mtm_data['support_level_changed'] != '-':
+                        result_lines.append(f"  Support Level Changed (End of Standard Support): {mtm_data['support_level_changed']}")
+                    result_lines.append(f"  Service Discontinued (End of Extended Support): {mtm_data['discontinued'] if mtm_data['discontinued'] != '-' else 'Not announced'}")
                 result_lines.append("")
             
             return '\n'.join(result_lines)
