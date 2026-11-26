@@ -1,6 +1,6 @@
 # Sales Manual UI on the Launchpad template - intent and plan
 
-> Status: PLAN, decisions agreed 2026-11-26. No UI code changed yet. Target is the persistent Spyre LPAR (see `SPYRE_LPAR_PLAN.md`), a long-lived tool, not a repeatable recipe. Techzone is unavailable.
+> Status (2026-11-26 evening): chat UI and Sources page are BUILT and pushed (see the latest section of `CHECKPOINT_OLLAMA_RHEL.md`). Not yet packaged or deployed to the LPAR. The sections below are the original plan and decisions; they still hold. Target is the persistent Spyre LPAR (see `SPYRE_LPAR_PLAN.md`), a long-lived tool, not a repeatable recipe. Techzone is unavailable.
 >
 > Product name: **IBM Power Sales Manual Assistant** (not "DigitalAssistant"). Built in place in `carbon-rag-ui/` (no one else uses it; no need to keep a parallel copy). Keep the design open to other documentation sets later.
 
