@@ -76,6 +76,23 @@ class QueryClassifier:
         rf"(?:feature\s+)?(?:code\s+)?{_FC}.*?(?:description|details?|info)",
     ]
     
+    # Which part of a family's index a RAG question should draw on. Feature-code chunks are ~90% of
+    # an index, so a general question ("maximum memory", "operating systems") must not be left to
+    # compete with them; a feature question ("which adapters / feature codes ...") needs them.
+    SCOPE_FEATURE = 'feature'    # asks for feature codes / part numbers: feature chunks first
+    SCOPE_MIXED = 'mixed'        # may be about orderable options: both kinds
+    SCOPE_GENERAL = 'general'    # specifications, requirements, overview: narrative sections first
+
+    # Unmistakable: a code (#EFP1, (#0010), "feature code 0010"), "feature code(s)", FC, CCIN, part number
+    _STRONG_FEATURE = re.compile(
+        r"\(?#[A-Z0-9]{4}\b|\bfeature\s+(?:codes?|numbers?)\b|\bFCs?\b|\bCCINs?\b|\bpart\s+numbers?\b",
+        re.IGNORECASE)
+    # Hints at orderable options. "features" alone also means "highlights", so this stays mixed.
+    _WEAK_FEATURE = re.compile(
+        r"\bfeatures?\b|\boptions?\b|\border(?:s|ed|ing|able)?\b|\badapters?\b|\bcards?\b|\bc?dimms?\b"
+        r"|\btransceivers?\b|\bcables?\b|\bnvme\b|\bdrives?\b",
+        re.IGNORECASE)
+
     # Server model patterns
     SERVER_PATTERNS = [
         r"(?:IBM\s+)?Power\s+(?:System\s+)?[ELS]\d{3,4}",
@@ -182,6 +199,14 @@ class QueryClassifier:
         """Check if query is about feature availability"""
         return any(regex.search(query) for regex in self.feature_regex)
     
+    def retrieval_scope(self, query: str) -> str:
+        """SCOPE_FEATURE, SCOPE_MIXED or SCOPE_GENERAL: which kind of chunks a RAG search should favour."""
+        if self._STRONG_FEATURE.search(query):
+            return self.SCOPE_FEATURE
+        if self._WEAK_FEATURE.search(query):
+            return self.SCOPE_MIXED
+        return self.SCOPE_GENERAL
+
     def extract_server_model(self, query: str) -> Optional[str]:
         """
         Extract server model from query
@@ -254,6 +279,7 @@ class QueryClassifier:
                         'mtm': watson_entities.get('mtm'),
                         'mtm_options': watson_result.get('mtm_options', []),
                         'feature_code': None,
+                        'retrieval_scope': self.retrieval_scope(query),
                         'lifecycle_field': watson_entities.get('lifecycle_field'),
                         'confidence': watson_result.get('confidence', 0),
                         'source': 'watson_assistant',
@@ -294,9 +320,13 @@ class QueryClassifier:
             'original_query': query,
             'server_model': server_model,
             'mtm': mtm,
+            # Keyword rewrite of the question for retrieval (LLM only; None if unavailable)
+            'search_query': llm.get('search_query') if llm else None,
             # "S924" alone could be the A or the G model (different MTMs, different manuals)
             'mtm_options': variant_options(server_model) if server_model and not mtm else [],
             'feature_code': None,
+            # Which chunks a RAG search should favour (feature-code chunks vs narrative sections)
+            'retrieval_scope': self.retrieval_scope(query),
             'lifecycle_field': lifecycle_field if query_type == QueryType.TABLE_LOOKUP.value else None,
             'confidence': 0.9 if server_model else 0.5,
             'source': source,

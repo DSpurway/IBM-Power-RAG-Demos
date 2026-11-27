@@ -117,13 +117,20 @@ def _build_messages(query: str) -> List[Dict[str, str]]:
         '- "lifecycle_field": only for table_lookup, one of: "announced", "available", '
         '"withdrawn" (withdrawn from marketing, stop selling), "end_of_support" (stop supporting, '
         'end of support or service), "support_level_changed", "discontinued"; null if the '
-        "question does not say which date.\n\n"
+        "question does not say which date.\n"
+        '- "search_query": only for "rag": 4 to 12 keywords the IBM Sales Manual itself would use '
+        'to answer the question, without the server name and without the words IBM, Power or '
+        'System. Name the manual section or the units when you can, for example "maximum memory '
+        'capacity TB", "supported operating systems software requirements AIX IBM i Linux" or '
+        '"physical specifications dimensions weight". If the question means electrical power '
+        '(not the product name), write "electrical power consumption watts kVA operating '
+        'environment". null for other query types.\n\n'
         'Example: "When did we stop supporting the S924?" -> '
         '{"server_model": "S924", "candidates": [], "query_type": "table_lookup", '
         '"lifecycle_field": "end_of_support"}\n'
         'Example: "What is the maximum memory of the E980?" -> '
         '{"server_model": "E980", "candidates": [], "query_type": "rag", '
-        '"lifecycle_field": null}'
+        '"lifecycle_field": null, "search_query": "maximum memory capacity TB"}'
     )
     return [{"role": "system", "content": system}, {"role": "user", "content": query}]
 
@@ -161,11 +168,14 @@ def validate_llm_result(data: dict) -> Dict[str, object]:
             candidates.append(model)
     query_type = data.get('query_type')
     field = data.get('lifecycle_field')
+    search_query = data.get('search_query')
+    search_query = ' '.join(search_query.split())[:200] if isinstance(search_query, str) else ''
     return {
         'server_model': _normalise_model(data.get('server_model')),
         'candidates': candidates,
         'query_type': query_type if query_type in QUERY_TYPES else None,
         'lifecycle_field': field if field in LIFECYCLE_FIELDS else None,
+        'search_query': search_query if len(search_query) >= 3 else None,
     }
 
 
@@ -178,7 +188,7 @@ def llm_extract(query: str) -> Optional[Dict[str, object]]:
         'model': LLM_MODEL,
         'messages': _build_messages(query),
         'temperature': 0,
-        'max_tokens': 150,
+        'max_tokens': 200,
     }
     try:
         resp = requests.post(f'{LLM_BASE_URL}/v1/chat/completions', json=payload,

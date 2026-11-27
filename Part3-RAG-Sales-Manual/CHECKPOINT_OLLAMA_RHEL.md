@@ -280,3 +280,43 @@ Supersedes "No UI code written yet", "NEXT: scaffold" and "Uncommitted work" in 
 
 **Starting a new task** - paste: "Continue the IBM Power Sales Manual Assistant work. Read `Part3-RAG-Sales-Manual/CHECKPOINT_OLLAMA_RHEL.md` (section 'UPDATE 2026-11-27'). The stack is deployed on the Spyre LPAR at http://spyre.aixncc.uk.ibm.com:8400/. Next: improve RAG retrieval quality for specification questions (maximum memory, operating systems), then streaming." Ask me for the LPAR password; use env var `SPW` with `.lpar/lpar.py`.
 
+
+## UPDATE 2026-11-27 (later) - RAG retrieval investigation; fix WRITTEN, NOT yet tested or deployed
+
+**Root causes found (measured on the LPAR with `.lpar/eval.py`, 6 questions with known-right chunks)**
+1. The RAG candidate pool was tiny: `k=3`, so 6 hybrid hits were reranked down to 3. The right chunk was often not in the 6.
+2. About 92% of a family's chunks are `feature_code` chunks (E980: 1263 of 1372). They crowd out narrative `content_section` chunks (Abstract, Highlights, Operating environment, Software requirements).
+3. Question wording vs manual wording: "power" matches the product name everywhere (BM25 noise), "OS" is not "software requirements", etc. A keyword rewrite of the question fixes this.
+Scores (right chunk reached the LLM): current 2/6; pool of 30 3/6; union of pools + rerank on the question 4/6; same but rerank on the rewrite 5/6; top-3 of each wording merged 6/6. Ground truth used: E980 "up to 64 TB memory" (Abstract / System nodes / Highlights), "Operating environment" (4,130 watts, 4.2 kVA), "Physical specifications", S1022 two "Technical description > Software requirements" chunks (AIX/VIOS and Linux/IBM i), E980 "192 POWER9", "32 CDIMM slots". Timing: pool build 0.5 s + rerank about 2.5 s per wording (CPU).
+
+**Code written (UNCOMMITTED, NOT yet run or deployed)**
+- `rag-backend/intent_extractor.py`: LLM prompt now also returns `search_query` (4-12 manual keywords, no server name; "electrical power consumption watts kVA operating environment" when "power" means electrical); `validate_llm_result` returns it (cleaned, None if missing/too short); `max_tokens` 150 -> 200.
+- `rag-backend/query_classifier.py`: `get_query_intent` passes `search_query` through (None without LLM).
+- `rag-backend/app.py`: new `_rag_candidates()` (per query: hybrid over all chunks `RAG_POOL_K`=30 plus hybrid restricted to `metadata.section_type.keyword = content_section` `RAG_CONTENT_K`=20, merged by id); RAG path searches the stripped question + the rewrite, then reranks the pool against the question AND the rewrite, keeps `RAG_TOP_K`=3 from each, merged (at most 6 chunks) into the LLM context. Dense kNN fallback only if no candidates. The old hybrid/dense try/except block was replaced.
+- `rag-backend/test_intent_extractor.py`: new test `test_search_query_is_cleaned_and_optional` (inserted at line 57; needs a blank line before the `def` for style).
+
+**Next steps (in order)**
+1. Run `python -m py_compile app.py query_classifier.py intent_extractor.py` and `python -m unittest test_intent_extractor test_server_mtm_mapper test_lifecycle_support_level` in `rag-backend/` (the last command was cancelled before it ran). Fix anything it shows.
+2. Deploy: `.lpar/lpar.py put` the 4 changed files to `/home/david/sales-assistant/rag-backend/`, then run `.lpar/rebuild-up.sh` (about 1 min). Password via env var `SPW`.
+3. Test with `python .lpar/ask.py` and check the backend log lines "RAG search rewrite", "RAG candidate pool", "Reranked to N chunks". Questions: max memory (E980), power use (E980), S1022 operating systems, cores, dimensions. CHECK that the real Granite produces a good `search_query` (the eval used hand-written rewrites). If it is poor, tune the prompt in `intent_extractor._build_messages`. Latency should rise by about 5 s (two reranks); drop `RAG_POOL_K` if too slow.
+4. Then: commit (the user said GitHub sync is NOT important for this work, so a local commit is enough), and consider streaming answers to the UI (LLM decode is about 8 tok/s).
+5. Eval harness: `.lpar/eval.py` (+ `eval.sh`, `diag.py`, `disc.py`; git-ignored). Upload with `lpar.py put`, run with `lpar.py script .lpar/eval.sh`. It writes results to `/tmp/eval.out` inside the backend container.
+
+**Starting a new task** - paste: "Continue the IBM Power Sales Manual Assistant work. Read `Part3-RAG-Sales-Manual/CHECKPOINT_OLLAMA_RHEL.md`, section 'UPDATE 2026-11-27 (later)'. The RAG retrieval fix is written but untested and undeployed: run the tests, deploy to the LPAR, and verify with real questions." The LPAR password is not stored; ask me for it (env var `SPW`, helper `.lpar/lpar.py`).
+
+
+
+## UPDATE 2026-11-27 (evening) - retrieval scope in the classifier; tested locally, NOT deployed
+
+- Idea: feature-code chunks (~92% of an index) crowd out narrative chunks, so the classifier now decides which kind a RAG question should favour.
+- `query_classifier.QueryClassifier.retrieval_scope()` -> `intent['retrieval_scope']`: `feature` (a code like `#EFP1` / "feature code 0010", "feature codes", FC, CCIN, part number), `mixed` (feature/option/order/adapter/card/DIMM/cable/drive wording; "features" alone can mean highlights), `general` (everything else: max memory, operating systems, power, dimensions).
+- `app.py` `_scope_pool_sizes()`: general = all-chunks pool 8 + narrative pool 30; feature = 30 + 5; mixed = 30 + 20 (env `RAG_POOL_K` / `RAG_CONTENT_K` are the base). The log line "RAG candidate pool ... scope=" shows what was used. The exact-code direct lookup is unchanged.
+- Tests: 30 pass (`python -m unittest test_intent_extractor test_server_mtm_mapper test_lifecycle_support_level` in `rag-backend/`), includes the new `RetrievalScopeTest`.
+- Still to do: the LPAR deploy and real-question check from the previous section (this change and the earlier `_rag_candidates` / `search_query` work are both undeployed). Then check that feature questions ("What PCIe adapters can I order for the S1022?", "What is feature code #EFP1?") still answer as well as before.
+
+### Deployed and measured (2026-11-27, evening)
+- Deployed to the LPAR (app.py, query_classifier.py, intent_extractor.py; `.lpar/rebuild-up.sh`). The real Granite writes good `search_query` rewrites (e.g. "supported operating systems software requirements") and the scope shows in the log line "RAG candidate pool ... scope=".
+- Production-path eval `.lpar/eval2.py` / `eval2.sh` (real intent -> `_rag_candidates` -> rerank): 5/6 with scope only; the miss was S1022 operating systems (the two "Software requirements" chunks were in the pool but the MiniLM reranker put them 18th and 23rd).
+- Fix: `_title_matches()` in `app.py` adds up to 2 narrative chunks whose heading shares >= 2 words with the rewrite (log: "Added heading match"). Now 6/6, and the live S1022 OS answer lists the Linux/AIX versions from Software requirements. Feature questions (`#EPPK`, "which feature codes are memory DIMMs") still answer from feature chunks.
+- Live answers are 25-40 s (LLM decode), unchanged. Streaming is still the next idea for perceived latency.
+- Everything here is UNCOMMITTED (local only). The LPAR password was given in chat for this session and is not stored anywhere.

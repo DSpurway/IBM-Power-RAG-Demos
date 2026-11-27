@@ -55,6 +55,45 @@ class ValidateTest(unittest.TestCase):
         self.assertEqual(ie.validate_llm_result({'server_model': '9009-42A'})['server_model'], 'S924')
         self.assertEqual(ie.validate_llm_result({'server_model': 'IBM Power s924'})['server_model'], 'S924')
 
+    def test_search_query_is_cleaned_and_optional(self):
+        r = ie.validate_llm_result({'search_query': '  maximum   memory\ncapacity TB '})
+        self.assertEqual(r['search_query'], 'maximum memory capacity TB')
+        self.assertIsNone(ie.validate_llm_result({'search_query': 'x'})['search_query'])
+        self.assertIsNone(ie.validate_llm_result({'search_query': 42})['search_query'])
+        self.assertIsNone(ie.validate_llm_result({})['search_query'])
+
+
+class RetrievalScopeTest(unittest.TestCase):
+    def setUp(self):
+        self.c = QueryClassifier(use_watson=False)
+
+    def scope(self, q):
+        return self.c.retrieval_scope(q)
+
+    def test_feature_codes_and_part_numbers_are_feature_scope(self):
+        for q in ("What is feature code #EFP1?", "Is (#0010) still available on the E980?",
+                  "What is feature code 5899?", "Which feature codes are memory DIMMs on the S1022?",
+                  "What is the CCIN for the NVMe drive?"):
+            self.assertEqual(self.scope(q), 'feature', q)
+
+    def test_general_questions_are_general_scope(self):
+        for q in ("What is the maximum memory of the E980?", "Which operating systems does the S1022 support?",
+                  "How much power does the E980 use?", "What are the dimensions and weight of the S924?",
+                  "How many PCIe slots does the S1024 have?"):
+            self.assertEqual(self.scope(q), 'general', q)
+
+    def test_orderable_options_are_mixed_scope(self):
+        for q in ("What PCIe adapters can I order for the S1022?", "What are the key features of the E980?",
+                  "Which memory options are there for the S1024?"):
+            self.assertEqual(self.scope(q), 'mixed', q)
+
+    def test_intent_carries_the_scope(self):
+        with mock.patch.object(ie, 'LLM_BASE_URL', ''):
+            self.assertEqual(self.c.get_query_intent("What is the maximum memory of the E980?")['retrieval_scope'],
+                             'general')
+            self.assertEqual(self.c.get_query_intent("What is feature code #EFP1 on the E980?")['retrieval_scope'],
+                             'feature')
+
 
 class IntentTest(unittest.TestCase):
     def setUp(self):
