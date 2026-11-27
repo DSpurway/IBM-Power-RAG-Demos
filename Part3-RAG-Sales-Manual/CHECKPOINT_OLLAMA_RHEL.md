@@ -346,3 +346,9 @@ Scores (right chunk reached the LLM): current 2/6; pool of 30 3/6; union of pool
 3. Check IBM i / Linux / VIOS variants; re-run `.lpar/eval2.sh` for regression.
 4. The manual has an inconsistent line ("AIX 6.1 with 6100-09 TL and Service Pack 7100-09-07-1614"); consider a data-quality note.
 5. Optional: stream answers to the UI (~8 tok/s, 25-45 s per answer).
+## UPDATE 2026-11-27 (night) - "what level is needed" answered from a computed table (DEPLOYED, committed 84be0b0)
+
+- software_levels.supported_releases() gives the lowest listed level per release, newest first, one line per list ("Any I/O" / "Virtual I/O only"). app.py puts it in the context for non-"minimum" level questions and tells Granite to present every line (it states the line count).
+- Live check: E980 "What level of AIX is needed" now lists 7.3, 7.2, 7.1, 6.1 for BOTH lists; S1022 IBM i lists 7.6 down to 7.3 (one list in the manual). eval2 retrieval regression: 6/6.
+- Known: the manual's inconsistent line (AIX 6.1 with "Service Pack 7100-09-07-1614") is quoted as printed and Granite does not flag it. Linux questions have no computed table (answered from the Software requirements chunk, looked right). "Needed" answers take 40-60 s.
+- Next: optional data-quality note for the inconsistent line; stream answers to the UI; IBM i/VIOS variants on other servers; the leftover legacy items in the previous sections. The LPAR password is not stored (env var SPW).
