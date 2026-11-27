@@ -393,7 +393,7 @@ def generate_chunk_id(doc_id, page_content):
 # ============================================================================
 
 from server_mtm_mapper import SOURCES_FILE, get_collection_name_for_family
-from software_levels import MINIMUM_WORDS, oldest_levels
+from software_levels import MINIMUM_WORDS, oldest_levels, supported_releases
 
 
 @app.route('/api/sources', methods=['GET'])
@@ -2513,7 +2513,7 @@ def generate():
             hits = response['hits']['hits']
             logger.info(f"Dense fallback search found {len(hits)} chunks")
         
-        level_facts = []
+        level_facts, level_heading = [], ""
         # Apply reranking if we have chunks: top-k for the question as asked, plus top-k for the
         # keyword rewrite (when there is one), merged. Each wording finds chunks the other misses.
         if len(hits) > 0:
@@ -2532,9 +2532,15 @@ def generate():
                         logger.info(f"Added heading match: {hit['_source']['text'].split(chr(10), 1)[0][:80]}")
             if section_hint:
                 section_hits = _section_chunks(hits, section_hint['section'], section_hint['terms'])
-                if section_hits and MINIMUM_WORDS.search(prompt):
-                    level_facts = oldest_levels([h['_source'].get('text', '') for h in section_hits], section_hint['terms'])
-                    logger.info(f"Oldest levels computed: {level_facts}")
+                if section_hits:
+                    level_texts = [h['_source'].get('text', '') for h in section_hits]
+                    if MINIMUM_WORDS.search(prompt):
+                        level_facts = oldest_levels(level_texts, section_hint['terms'])
+                        level_heading = "Oldest level in each list above, worked out from the lists"
+                    else:
+                        level_facts = supported_releases(level_texts, section_hint['terms'])
+                        level_heading = "Lowest listed level for each supported release in each list above (newest first), worked out from the lists"
+                    logger.info(f"Software levels computed: {level_facts}")
                 if section_hits:
                     # The section answers this question; feature chunks that merely mention AIX/Linux only dilute it
                     reranked_hits = section_hits + [h for h in reranked_hits
@@ -2604,11 +2610,15 @@ def generate():
         
         context = "\n".join(context_parts)
         if level_facts:
-            context += ("\n[Oldest level in each list above, worked out from the lists]\n"
+            context += (f"\n[{level_heading}]\n"
                         + "\n".join(f"- {fact}" for fact in level_facts) + "\n")
         
         # Build RAG prompt
         software_note = SOFTWARE_LEVEL_NOTE if section_hint else ""
+        if level_facts:
+            software_note += ("\n- The lines under [" + level_heading + "] were worked out by program from the lists and are correct. "
+                              f"There are {len(level_facts)} line(s), one per list: present every one of them, keeping the list name and the order. "
+                              "Do not choose between lists, do not merge them, and add only conditions shown in the context.")
         rag_prompt = f"""You are an expert on IBM Power Systems enterprise servers. You are answering questions about IBM Power servers, which are high-performance enterprise computing systems used in data centers for mission-critical workloads.
 
 IMPORTANT CONTEXT:

@@ -1,7 +1,7 @@
 """Tests for software_levels. Run: python -m unittest test_software_levels -v"""
 import unittest
 
-from software_levels import MINIMUM_WORDS, oldest_levels
+from software_levels import MINIMUM_WORDS, oldest_levels, supported_releases
 
 E980 = """Technical description > Software requirements
 
@@ -42,6 +42,26 @@ class OldestLevelsTest(unittest.TestCase):
         self.assertEqual(oldest_levels([E980], ['linux']), [])
         self.assertEqual(oldest_levels(["no lists here"], ['aix']), [])
         self.assertEqual(oldest_levels([E980], []), [])
+
+    def test_supported_releases_lowest_level_per_release_newest_first(self):
+        got = supported_releases([E980], ['aix'])
+        self.assertEqual(len(got), 2)
+        self.assertTrue(got[0].startswith("AIX operating system LPAR with any I/O configuration: AIX Version 7.3 with the 7300-00"))
+        releases = got[0].split(": ", 1)[1].split("; ")
+        self.assertEqual(len(releases), 4)  # 7.3, 7.2, 7.1, 6.1
+        self.assertIn("7200-01", releases[1])  # lowest TL of 7.2 (7200-01 beats 7200-04)
+        self.assertNotIn("7200-04", got[0])
+        self.assertIn("AIX Version 6.1", releases[3])
+        self.assertEqual(len(got[1].split(": ", 1)[1].split("; ")), 3)
+
+    def test_supported_releases_ibm_i(self):
+        got = supported_releases([IBM_I], ['ibm i'])
+        self.assertEqual(len(got), 1)
+        order = [r.split(",")[0] for r in got[0].split(": ", 1)[1].split("; ")]
+        self.assertEqual(order, ["IBM i 7.5", "IBM i 7.3 TR5", "IBM i 7.2 TR9", "IBM i 7.1 TR11"])
+
+    def test_supported_releases_nothing_found(self):
+        self.assertEqual(supported_releases([E980], ['linux']), [])
 
     def test_minimum_wording(self):
         for q in ("What is the minimum level of AIX?", "oldest IBM i release for the S1022", "AIX level of at least 7.2"):
