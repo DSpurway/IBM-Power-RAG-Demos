@@ -32,6 +32,7 @@ def ingest_file(filepath: pathlib.Path, backend_url: str):
         "server_name": title,
         "url": url,
         "published": published,
+        "replace": True,  # chunk ids are positional; drop the old index so a re-chunk leaves nothing stale
         "chunks": chunks
     }
     

@@ -320,3 +320,29 @@ Scores (right chunk reached the LLM): current 2/6; pool of 30 3/6; union of pool
 - Fix: `_title_matches()` in `app.py` adds up to 2 narrative chunks whose heading shares >= 2 words with the rewrite (log: "Added heading match"). Now 6/6, and the live S1022 OS answer lists the Linux/AIX versions from Software requirements. Feature questions (`#EPPK`, "which feature codes are memory DIMMs") still answer from feature chunks.
 - Live answers are 25-40 s (LLM decode), unchanged. Streaming is still the next idea for perceived latency.
 - Everything here is UNCOMMITTED (local only). The LPAR password was given in chat for this session and is not stored anywhere.
+
+
+## UPDATE 2026-11-27 (late) - OS-level questions: chunker fix, section hint, software_levels (DEPLOYED)
+
+**Problem:** "What level of AIX is needed / minimum for the E980?" gave wrong, inconsistent answers.
+
+**Causes and fixes**
+- Chunker split a lead-in line ("If installing the AIX operating system LPAR with any I/O configuration (one of these):") from its list. Fixed in both `rag-backend/chunk_tree.py` and `laptop-scraper/chunk_tree.py` (v2.1.0; the laptop one is what ingestion actually uses).
+- Chunk ids are positional, so re-chunking left stale chunks. `/api/ingest-chunks` now takes `replace` (delete index first); `ingest_corpus_to_backend.py` sends it. All 27 families re-ingested (~8 min; each index is empty ~20 s during replace).
+- `query_classifier.section_hint()` returns `{'section': 'Software requirements', ...}` for level-type words plus AIX/IBM i/Linux/VIOS/"operating system". `app.py` `_section_chunks()` puts those chunks first and drops feature-code chunks.
+- `SOFTWARE_LEVEL_NOTE` added to the prompt (TL/SP/TR notation, "(one of these)" = alternatives, flag inconsistent levels).
+- New `rag-backend/software_levels.py` (`oldest_levels`): works out the oldest AIX/IBM i level per list for "minimum" questions, because Granite picks the wrong one. Dockerfile copies it.
+- Tests: 39 pass (`python -m unittest test_intent_extractor test_server_mtm_mapper test_lifecycle_support_level test_chunk_tree test_software_levels` in `rag-backend/`).
+- Mojibake incident: PowerShell 5.1 `Get-Content -Raw` + write double-encoded `app.py` (shipped in `d7b279c`). Repaired. Never edit source that way; use apply_diff or Python with `encoding='utf-8'`.
+
+**Live results after final deploy**
+- Retrieval is right for both AIX questions (the three Software requirements chunks, no NVMe feature chunks).
+- "Minimum level of AIX ... E980": now 6.1 6100-09 (service extension). Correct oldest level, but attributed to the Virtual I/O only list; the any-I/O list should also be given.
+- "What level of AIX is needed ... E980": STILL WRONG. Granite ignores the note and answers "AIX 7.2 TL4". Should list each supported release (7.3 TL0, 7.2 TL4 ...) newest first.
+
+**Next steps**
+1. For "needed" questions, precompute a supported-release table in `software_levels.py` (like `oldest_levels`, one lowest TL per release per list) and put it in the context, rather than relying on the model.
+2. Say which list (any I/O vs Virtual I/O only) each computed level comes from.
+3. Check IBM i / Linux / VIOS variants; re-run `.lpar/eval2.sh` for regression.
+4. The manual has an inconsistent line ("AIX 6.1 with 6100-09 TL and Service Pack 7100-09-07-1614"); consider a data-quality note.
+5. Optional: stream answers to the UI (~8 tok/s, 25-45 s per answer).

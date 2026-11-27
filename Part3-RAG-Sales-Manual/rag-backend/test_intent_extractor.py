@@ -95,6 +95,30 @@ class RetrievalScopeTest(unittest.TestCase):
                              'feature')
 
 
+class SectionHintTest(unittest.TestCase):
+    def setUp(self):
+        self.c = QueryClassifier(use_watson=False)
+
+    def test_os_level_questions_name_the_software_section(self):
+        cases = {
+            "What level of AIX is needed to support the E980?": ['aix'],
+            "What is the minimum level of AIX to support the E980?": ['aix'],
+            "Which IBM i releases does the S1022 support?": ['ibm i'],
+            "What RHEL version does the S1024 need?": ['linux'],
+            "Which operating systems does the S1022 support?": [],
+            "What VIOS level is required on the E1080?": ['vios'],
+        }
+        for q, terms in cases.items():
+            hint = self.c.section_hint(q)
+            self.assertEqual(hint and (hint['section'], hint['terms']), ('Software requirements', terms), q)
+
+    def test_other_questions_have_no_hint(self):
+        for q in ("What is the maximum memory of the E980?", "What is feature code #EC7E?",
+                  "What PCIe adapters can I order for the S1022?", "How much power does the E980 use?",
+                  "Is AIX a good choice?"):
+            self.assertIsNone(self.c.section_hint(q), q)
+
+
 class IntentTest(unittest.TestCase):
     def setUp(self):
         self.c = QueryClassifier(use_watson=False)

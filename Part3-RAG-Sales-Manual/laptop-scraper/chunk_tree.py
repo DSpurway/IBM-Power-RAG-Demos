@@ -40,7 +40,7 @@ except Exception:
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "rag-backend"))
 from sales_manual_chunker import SalesManualChunker  # noqa: E402
 
-VERSION = "2.0.0"
+VERSION = "2.1.0"
 MAX_CHARS = 1500
 
 SKIP_TOP = {"accessories", "supplies", "trademarks"}
@@ -107,10 +107,23 @@ def _fit(block: str, cap: int) -> list:
     return pieces
 
 
+def _blocks(text: str) -> list:
+    """Paragraphs, with a one-line lead-in ("If installing AIX (one of these):") kept with what it introduces."""
+    blocks = []
+    for b in (b.strip() for b in text.split("\n\n")):
+        if not b:
+            continue
+        if blocks and blocks[-1].endswith(":") and "\n" not in blocks[-1] and not b.startswith("|"):
+            blocks[-1] = f"{blocks[-1]}\n{b}"
+        else:
+            blocks.append(b)
+    return blocks
+
+
 def split_text(text: str, cap: int = MAX_CHARS) -> list:
     out, cur = [], ""
-    for block in (b for b in text.split("\n\n") if b.strip()):
-        for p in _fit(block.strip(), cap):
+    for block in _blocks(text):
+        for p in _fit(block, cap):
             if cur and len(cur) + 2 + len(p) > cap:
                 out.append(cur); cur = ""
             cur = f"{cur}\n\n{p}" if cur else p

@@ -67,24 +67,24 @@ OPENSEARCH_USE_SSL = os.environ.get('OPENSEARCH_USE_SSL', 'false').lower() == 't
 
 # LLM Service Configuration
 # Three LLM backends run side-by-side for comparison:
-#   granite   â€” llama.cpp server, POST /completion          (port 8080)
-#   tinyllama â€” llama.cpp server, POST /completion          (port 8080)
-#   vllm      â€” vLLM/OpenAI-compatible, POST /v1/chat/completions (port 8000)
-#   ollama    â€” Ollama/OpenAI-compatible, POST /v1/chat/completions (port 11434)
+#   granite   — llama.cpp server, POST /completion          (port 8080)
+#   tinyllama — llama.cpp server, POST /completion          (port 8080)
+#   vllm      — vLLM/OpenAI-compatible, POST /v1/chat/completions (port 8000)
+#   ollama    — Ollama/OpenAI-compatible, POST /v1/chat/completions (port 11434)
 
 GRANITE_HOST = os.environ.get('GRANITE_HOST', os.environ.get('LLAMA_HOST', 'granite-service'))
 GRANITE_PORT = os.environ.get('GRANITE_PORT', os.environ.get('LLAMA_PORT', '8080'))
 
-# TinyLlama (Part 1 - demonstrates hallucinations) â€” llama.cpp format
+# TinyLlama (Part 1 - demonstrates hallucinations) — llama.cpp format
 TINYLLAMA_HOST = os.environ.get('TINYLLAMA_HOST', 'llama-service')
 TINYLLAMA_PORT = os.environ.get('TINYLLAMA_PORT', '8080')
 
-# vLLM service â€” OpenAI-compatible API on port 8000
+# vLLM service — OpenAI-compatible API on port 8000
 # Deploy alongside granite/tinyllama for performance comparison
 VLLM_HOST = os.environ.get('VLLM_HOST', 'vllm-service')
 VLLM_PORT = os.environ.get('VLLM_PORT', '8000')
 
-# Ollama service â€” OpenAI-compatible API on port 11434
+# Ollama service — OpenAI-compatible API on port 11434
 OLLAMA_HOST = os.environ.get('OLLAMA_HOST', 'ollama-service')
 OLLAMA_PORT = os.environ.get('OLLAMA_PORT', '11434')
 
@@ -205,6 +205,27 @@ def _scope_pool_sizes(scope, pool_k, content_k):
     if scope == 'feature':
         return pool_k, max(content_k // 4, 5)
     return pool_k, content_k
+
+
+# Added to the RAG prompt for operating-system level questions, where the manual's lists are easy to misread
+SOFTWARE_LEVEL_NOTE = """
+- Each list headed "(one of these)" gives alternatives: any listed level, or a later one where it says "or later", meets the requirement. Say which list an answer comes from (for example "AIX LPAR with any I/O configuration" or "Virtual I/O only LPAR"). For "what level is needed" list each supported release with its lowest listed Technology Level, newest first, and give any condition shown (such as a service extension). For a "minimum" question use the oldest levels worked out below the context, if given.
+- AIX levels read: "AIX 7.2 with the 7200-04 Technology Level" is release 7.2, Technology Level 4; a Service Pack adds two parts, e.g. 7200-04-06-2220 = TL 4, SP 6, built in year 22 week 20. IBM i uses Technology Refreshes (TR), e.g. "IBM i 7.3 TR5". If a printed level looks inconsistent (a release that does not match its service pack), quote it as printed and say it looks inconsistent."""
+
+def _section_chunks(candidates, section, terms, limit=4):
+    """Narrative chunks whose heading ends with `section`; if `terms` are given, only those mentioning one."""
+    found = []
+    for hit in candidates:
+        source = hit['_source']
+        if source.get('metadata', {}).get('section_type') != 'content_section':
+            continue
+        text = source.get('text', '')
+        if not text.split('\n', 1)[0].strip().endswith(section):
+            continue
+        if terms and not any(term in text.lower() for term in terms):
+            continue
+        found.append(hit)
+    return found[:limit]
 
 
 _TITLE_WORD = re.compile(r"[a-z0-9]{4,}")
@@ -372,6 +393,7 @@ def generate_chunk_id(doc_id, page_content):
 # ============================================================================
 
 from server_mtm_mapper import SOURCES_FILE, get_collection_name_for_family
+from software_levels import MINIMUM_WORDS, oldest_levels
 
 
 @app.route('/api/sources', methods=['GET'])
@@ -519,14 +541,14 @@ def list_collections():
                     }
                     
                     if doc_count > 0:
-                        logger.info(f"âœ“ Found indexed key {key}: {doc_count} documents in {expected_index}")
+                        logger.info(f"✓ Found indexed key {key}: {doc_count} documents in {expected_index}")
                     else:
-                        logger.warning(f"âš  Key {key} index exists but has 0 documents: {expected_index}")
+                        logger.warning(f"⚠ Key {key} index exists but has 0 documents: {expected_index}")
                         
                 except Exception as count_error:
                     logger.error(f"Error getting count for {key} ({expected_index}): {count_error}")
             else:
-                logger.info(f"âœ— Key {key} not found (expected index: {expected_index})")
+                logger.info(f"✗ Key {key} not found (expected index: {expected_index})")
         
         logger.info(f"Final result: {len(collections_map)} MTMs found with indices")
         logger.info(f"MTMs with documents: {[mtm for mtm, details in collections_details.items() if details['document_count'] > 0]}")
@@ -1450,6 +1472,10 @@ def ingest_chunks():
         embeddings = get_embeddings()
         
         index_name = _generate_index_name(collection_name)
+        if data.get('replace') and client.indices.exists(index=index_name):
+            # Chunk ids are positional, so a re-chunked family would leave stale chunks behind
+            client.indices.delete(index=index_name)
+            logger.info(f"Replacing index {index_name}: old chunks deleted")
         _setup_index(index_name, embeddings.client.get_sentence_embedding_dimension())
         
         # Batch embed and bulk index chunks (batches of 100)
@@ -2037,9 +2063,9 @@ def generate():
                     content = (
                         f"I couldn't find any activation features in the sales manual for the IBM Power {server_model}. "
                         f"This could mean:\n"
-                        f"â€¢ This model doesn't support processor/memory activations\n"
-                        f"â€¢ The sales manual data needs to be re-ingested\n"
-                        f"â€¢ The activation features are documented in a different section"
+                        f"• This model doesn't support processor/memory activations\n"
+                        f"• The sales manual data needs to be re-ingested\n"
+                        f"• The activation features are documented in a different section"
                     )
                 
                 return jsonify({
@@ -2311,15 +2337,15 @@ def generate():
                 'processing_method': 'rag_retrieval_failed'
             }), 404
         
-        # â”€â”€ Feature code direct lookup â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        # ── Feature code direct lookup ───────────────────────────────────────────
         # If the query names a specific feature code (e.g. #EFP1, (#EFP1), EFP1),
         # skip semantic search entirely and hit OpenSearch with a metadata term
-        # query. This is exact â€” "is about EFP1" not "mentions EFP1".
+        # query. This is exact — "is about EFP1" not "mentions EFP1".
         # Match feature code in order of specificity:
-        #   1. (#EFP1)  â€” parenthesised form
-        #   2. #EFP1    â€” hash-prefixed (most common in user queries)
-        #   3. "feature code EFP1" / "feature code 0010" â€” bare code after keyword
-        # Do NOT use #?XXXX â€” that matches any 4-letter word like "WHAT"
+        #   1. (#EFP1)  — parenthesised form
+        #   2. #EFP1    — hash-prefixed (most common in user queries)
+        #   3. "feature code EFP1" / "feature code 0010" — bare code after keyword
+        # Do NOT use #?XXXX — that matches any 4-letter word like "WHAT"
         feature_code_match = (
             re.search(r'\(#([A-Z0-9]{4})\)', prompt, re.IGNORECASE) or
             re.search(r'#([A-Z0-9]{4})\b', prompt, re.IGNORECASE) or
@@ -2351,7 +2377,7 @@ def generate():
                 fc_meta = fc_source.get('metadata', {})
                 raw_chunk = fc_source.get('text', '')
 
-                # Build a tight, constrained prompt â€” LLM must answer only from
+                # Build a tight, constrained prompt — LLM must answer only from
                 # the single chunk. No padding, no external context.
                 fc_prompt = (
                     f"You are a technical assistant for IBM Power Systems sales manuals.\n"
@@ -2394,7 +2420,7 @@ def generate():
                         ai_services.append('llm')
                         logger.info(f"Feature code LLM answer generated for {feature_code}")
                 except Exception as llm_err:
-                    logger.warning(f"LLM call failed for feature code lookup: {llm_err} â€” returning raw chunk only")
+                    logger.warning(f"LLM call failed for feature code lookup: {llm_err} — returning raw chunk only")
 
                 return jsonify({
                     'success': True,
@@ -2422,10 +2448,10 @@ def generate():
                     'ai_services_used': ai_services,
                 })
             else:
-                logger.info(f"Feature code {feature_code} not found in {index_name} â€” falling through to RAG")
+                logger.info(f"Feature code {feature_code} not found in {index_name} — falling through to RAG")
 
         # Strip server/MTM tokens from the search query before hitting OpenSearch.
-        # server_model and server_mtm are already resolved â€” they selected this
+        # server_model and server_mtm are already resolved — they selected this
         # collection. Leaving them in the embedding/BM25 query dilutes the actual
         # topic signal (e.g. feature code #0010, memory, processor).
         # We strip the known exact values plus common surrounding phrases.
@@ -2455,6 +2481,12 @@ def generate():
         if search_rewrite and search_rewrite.lower() != search_prompt.lower():
             search_queries.append(search_rewrite)
             logger.info(f"RAG search rewrite: '{search_rewrite}'")
+        # A question the classifier tied to one manual section (operating-system levels): search for
+        # the section by name too, and keep its chunks whatever the reranker thinks of them.
+        section_hint = query_intent.get('section_hint')
+        if section_hint:
+            search_queries.append(' '.join(['Technical description', section_hint['section']] + section_hint['terms']))
+            logger.info(f"RAG section hint: {section_hint}")
         scope = query_intent.get('retrieval_scope', 'mixed')
         pool_k, content_k = _scope_pool_sizes(scope, int(os.environ.get('RAG_POOL_K', '30')),
                                               int(os.environ.get('RAG_CONTENT_K', '20')))
@@ -2481,6 +2513,7 @@ def generate():
             hits = response['hits']['hits']
             logger.info(f"Dense fallback search found {len(hits)} chunks")
         
+        level_facts = []
         # Apply reranking if we have chunks: top-k for the question as asked, plus top-k for the
         # keyword rewrite (when there is one), merged. Each wording finds chunks the other misses.
         if len(hits) > 0:
@@ -2497,6 +2530,17 @@ def generate():
                     if all(hit["_id"] != kept["_id"] for kept in reranked_hits):
                         reranked_hits.append(hit)
                         logger.info(f"Added heading match: {hit['_source']['text'].split(chr(10), 1)[0][:80]}")
+            if section_hint:
+                section_hits = _section_chunks(hits, section_hint['section'], section_hint['terms'])
+                if section_hits and MINIMUM_WORDS.search(prompt):
+                    level_facts = oldest_levels([h['_source'].get('text', '') for h in section_hits], section_hint['terms'])
+                    logger.info(f"Oldest levels computed: {level_facts}")
+                if section_hits:
+                    # The section answers this question; feature chunks that merely mention AIX/Linux only dilute it
+                    reranked_hits = section_hits + [h for h in reranked_hits
+                                                    if h["_id"] not in {s["_id"] for s in section_hits}
+                                                    and h["_source"].get("metadata", {}).get("section_type") != "feature_code"]
+                    logger.info(f"Section '{section_hint['section']}': {len(section_hits)} chunk(s) put first")
             logger.info(f"Reranked to {len(reranked_hits)} chunks ({len(rerank_queries)} wording(s))")
         else:
             reranked_hits = []
@@ -2516,7 +2560,7 @@ def generate():
                 source_url = metadata['source']
                 source_filename = metadata.get('filename') or metadata.get('source_filename')
             
-            # Collect chunk information for transparency â€” include key feature metadata
+            # Collect chunk information for transparency — include key feature metadata
             chunk_meta = {
                 'section': metadata.get('section_title', 'Unknown'),
                 'section_type': metadata.get('section_type', 'Unknown'),
@@ -2559,8 +2603,12 @@ def generate():
             context_parts.append(f"[Context {i}]\n{chunk_text}\n")
         
         context = "\n".join(context_parts)
+        if level_facts:
+            context += ("\n[Oldest level in each list above, worked out from the lists]\n"
+                        + "\n".join(f"- {fact}" for fact in level_facts) + "\n")
         
         # Build RAG prompt
+        software_note = SOFTWARE_LEVEL_NOTE if section_hint else ""
         rag_prompt = f"""You are an expert on IBM Power Systems enterprise servers. You are answering questions about IBM Power servers, which are high-performance enterprise computing systems used in data centers for mission-critical workloads.
 
 IMPORTANT CONTEXT:
@@ -2580,7 +2628,7 @@ Instructions:
 - Write plain text with simple Markdown (short lists, **bold**). Never use LaTeX or math notation such as \\text, \\approx or [ ]; write any calculation in words, e.g. "4.6 kVA x 0.9 = about 4.1 kW"
 - If the context doesn't contain enough information to fully answer the question, say so
 - Do not make up information not present in the context
-- Cite specific details from the context when relevant
+- Cite specific details from the context when relevant{software_note}
 
 Answer:"""
         
@@ -2628,7 +2676,7 @@ Answer:"""
                 }
             }
         elif llm_format == 'openai':
-            # vLLM â€” OpenAI-compatible chat completions
+            # vLLM — OpenAI-compatible chat completions
             if model_lower == 'openai':
                 llm_url = f"{LLM_BASE_URL}/v1/chat/completions"
             else:
@@ -2733,7 +2781,7 @@ SCRAPER_PROBE_URL = "https://www.ibm.com/support/pages/ibm-power-announcements"
 
 def _wait_for_scraper_ready(scraper_url, max_attempts=3, wait_seconds=10):
     """
-    Ensure the Code Engine scraper is genuinely ready â€” not just the container,
+    Ensure the Code Engine scraper is genuinely ready — not just the container,
     but Selenium/Chromium inside it.
 
     Strategy:
@@ -2742,7 +2790,7 @@ def _wait_for_scraper_ready(scraper_url, max_attempts=3, wait_seconds=10):
          A successful scrape confirms Chromium has fully initialised.
 
     Returns True if ready, False if all attempts failed (caller should still
-    proceed â€” the real scrape has its own retry logic).
+    proceed — the real scrape has its own retry logic).
     """
     import time
 
@@ -2751,7 +2799,7 @@ def _wait_for_scraper_ready(scraper_url, max_attempts=3, wait_seconds=10):
         requests.get(f"{scraper_url}/health", timeout=30)
         logger.info(f"[Scraper] Container is up at {scraper_url}")
     except requests.exceptions.RequestException as e:
-        logger.warning(f"[Scraper] Health check failed: {e} â€” container may still be starting")
+        logger.warning(f"[Scraper] Health check failed: {e} — container may still be starting")
 
     # Step 2: probe until Selenium is ready
     for attempt in range(1, max_attempts + 1):
@@ -2765,14 +2813,14 @@ def _wait_for_scraper_ready(scraper_url, max_attempts=3, wait_seconds=10):
                 timeout=60
             )
             if resp.status_code == 200 and resp.json().get("success"):
-                logger.info(f"[Scraper] âœ… Selenium ready after probe attempt {attempt}")
+                logger.info(f"[Scraper] ✅ Selenium ready after probe attempt {attempt}")
                 return True
             logger.warning(f"[Scraper] Probe attempt {attempt} returned success=False: "
                            f"{resp.json().get('error', 'unknown')}")
         except requests.exceptions.RequestException as e:
             logger.warning(f"[Scraper] Probe attempt {attempt} failed: {e}")
 
-    logger.warning("[Scraper] âš ï¸  Scraper not confirmed ready after all probe attempts â€” "
+    logger.warning("[Scraper] ⚠️  Scraper not confirmed ready after all probe attempts — "
                    "proceeding anyway, real scrape has its own retry logic")
     return False
 
@@ -3080,7 +3128,7 @@ def start_bulk_ingestion():
             logger.info(f"[Skip Check] Starting skip check for {mtm}")
             
             if force_reingest:
-                logger.info(f"[Skip Check] âŒ {mtm}: Force re-ingest enabled")
+                logger.info(f"[Skip Check] ❌ {mtm}: Force re-ingest enabled")
                 return True, "forced"
             
             try:
@@ -3088,7 +3136,7 @@ def start_bulk_ingestion():
                 from server_mtm_mapper import get_collection_name_for_mtm
                 collection_name = get_collection_name_for_mtm(mtm)
                 if not collection_name:
-                    logger.warning(f"[Skip Check] âŒ {mtm}: No collection mapping found")
+                    logger.warning(f"[Skip Check] ❌ {mtm}: No collection mapping found")
                     return True, "no_collection_mapping"
                 
                 logger.info(f"[Skip Check] {mtm}: Collection name = {collection_name}")
@@ -3103,7 +3151,7 @@ def start_bulk_ingestion():
                 logger.info(f"[Skip Check] {mtm}: Index exists = {exists}")
                 
                 if not exists:
-                    logger.info(f"[Skip Check] âŒ {mtm}: Index {index_name} doesn't exist")
+                    logger.info(f"[Skip Check] ❌ {mtm}: Index {index_name} doesn't exist")
                     return True, "index_missing"
                 
                 # Get document count
@@ -3112,7 +3160,7 @@ def start_bulk_ingestion():
                 logger.info(f"[Skip Check] {mtm}: Document count = {doc_count}")
                 
                 if doc_count == 0:
-                    logger.info(f"[Skip Check] âŒ {mtm}: Index {index_name} is empty")
+                    logger.info(f"[Skip Check] ❌ {mtm}: Index {index_name} is empty")
                     return True, "index_empty"
                 
                 # Get a sample document to check content hash
@@ -3126,7 +3174,7 @@ def start_bulk_ingestion():
                 )
                 
                 if search_response['hits']['total']['value'] == 0:
-                    logger.warning(f"[Skip Check] âŒ {mtm}: No documents found in search")
+                    logger.warning(f"[Skip Check] ❌ {mtm}: No documents found in search")
                     return True, "no_documents"
                 
                 existing_doc = search_response['hits']['hits'][0]['_source']
@@ -3135,7 +3183,7 @@ def start_bulk_ingestion():
                 logger.info(f"[Skip Check] {mtm}: Existing hash = {existing_hash[:8] if existing_hash else 'None'}...")
                 
                 if not existing_hash:
-                    logger.info(f"[Skip Check] âŒ {mtm}: No content hash found in document")
+                    logger.info(f"[Skip Check] ❌ {mtm}: No content hash found in document")
                     return True, "no_hash"
                 
                 # Scrape current content to get new hash
@@ -3148,7 +3196,7 @@ def start_bulk_ingestion():
                 )
                 
                 if scraper_response.status_code != 200:
-                    logger.warning(f"[Skip Check] âŒ {mtm}: Scraper failed with status {scraper_response.status_code}")
+                    logger.warning(f"[Skip Check] ❌ {mtm}: Scraper failed with status {scraper_response.status_code}")
                     return True, "scraper_error"
                 
                 scraper_data = scraper_response.json()
@@ -3157,14 +3205,14 @@ def start_bulk_ingestion():
                 logger.info(f"[Skip Check] {mtm}: New hash = {new_hash[:8]}...")
                 
                 if existing_hash == new_hash:
-                    logger.info(f"[Skip Check] âœ… {mtm}: UNCHANGED - Hashes match, skipping ingestion")
+                    logger.info(f"[Skip Check] ✅ {mtm}: UNCHANGED - Hashes match, skipping ingestion")
                     return False, "unchanged"
                 else:
-                    logger.info(f"[Skip Check] âŒ {mtm}: CHANGED - Hashes differ (old: {existing_hash[:8]}..., new: {new_hash[:8]}...)")
+                    logger.info(f"[Skip Check] ❌ {mtm}: CHANGED - Hashes differ (old: {existing_hash[:8]}..., new: {new_hash[:8]}...)")
                     return True, "content_changed"
                     
             except Exception as e:
-                logger.error(f"[Skip Check] âŒ {mtm}: Exception during check: {type(e).__name__}: {str(e)}")
+                logger.error(f"[Skip Check] ❌ {mtm}: Exception during check: {type(e).__name__}: {str(e)}")
                 logger.exception(e)  # Log full traceback
                 return True, "check_error"
         
@@ -3183,7 +3231,7 @@ def start_bulk_ingestion():
                             'model': server['model'],
                             'reason': reason
                         })
-                        logger.info(f"[Bulk Ingestion] â­ï¸  Skipped {server['model']} ({server['mtm']})")
+                        logger.info(f"[Bulk Ingestion] ⏭️  Skipped {server['model']} ({server['mtm']})")
                         continue
                     
                     logger.info(f"[Bulk Ingestion] Processing MTM {server['mtm']} - {server['model']} (reason: {reason})")
@@ -3210,9 +3258,9 @@ def start_bulk_ingestion():
                         # Note: completed/failed tracking is done in ingest_sales_manual()
                         # which appends the MTM (not model name) to avoid double-counting
                         if status_code == 200:
-                            logger.info(f"[Bulk Ingestion] âœ“ {server['model']} completed")
+                            logger.info(f"[Bulk Ingestion] ✓ {server['model']} completed")
                         else:
-                            logger.error(f"[Bulk Ingestion] âœ— {server['model']} failed")
+                            logger.error(f"[Bulk Ingestion] ✗ {server['model']} failed")
                             
                 except Exception as e:
                     logger.error(f"[Bulk Ingestion] Error processing {server['model']}: {e}")
@@ -3400,7 +3448,7 @@ def health():
         logger.error(f"OpenSearch health check failed: {e}")
         opensearch_status = "disconnected"
     
-    # Check LLM service â€” external OpenAI-compatible /v1/models; Ollama /api/version; llama.cpp /health
+    # Check LLM service — external OpenAI-compatible /v1/models; Ollama /api/version; llama.cpp /health
     try:
         if LLM_BASE_URL:
             llm_url = f"{LLM_BASE_URL}/v1/models"

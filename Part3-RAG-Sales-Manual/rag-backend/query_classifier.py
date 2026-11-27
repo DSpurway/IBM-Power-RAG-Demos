@@ -93,6 +93,20 @@ class QueryClassifier:
         r"|\btransceivers?\b|\bcables?\b|\bnvme\b|\bdrives?\b",
         re.IGNORECASE)
 
+    # Questions about operating-system levels are answered by one section, "Software requirements".
+    # Feature chunks mention "AIX" or "Linux" all over, so name the section instead of searching for it.
+    _OS_TERMS = {
+        'aix': re.compile(r"\bAIX\b", re.IGNORECASE),
+        'ibm i': re.compile(r"\bIBM\s*i\b", re.IGNORECASE),
+        'linux': re.compile(r"\b(?:Linux|RHEL|Red\s*Hat|SUSE|SLES)\b", re.IGNORECASE),
+        'vios': re.compile(r"\bVIOS\b|\bVirtual\s+I/O\s+Server\b", re.IGNORECASE),
+    }
+    _OS_GENERIC = re.compile(r"\boperating\s+systems?\b", re.IGNORECASE)
+    _LEVEL_WORDS = re.compile(
+        r"\b(?:levels?|versions?|releases?|minimum|oldest|latest|require[ds]?|need(?:s|ed)?|supports?|supported|"
+        r"TL|technology\s+(?:level|release)|service\s+packs?|PTFs?|or\s+later)\b", re.IGNORECASE)
+    SOFTWARE_SECTION = 'Software requirements'
+
     # Server model patterns
     SERVER_PATTERNS = [
         r"(?:IBM\s+)?Power\s+(?:System\s+)?[ELS]\d{3,4}",
@@ -207,6 +221,18 @@ class QueryClassifier:
             return self.SCOPE_MIXED
         return self.SCOPE_GENERAL
 
+    def section_hint(self, query: str) -> Optional[Dict[str, any]]:  # type: ignore
+        """The manual section a question is about, with the operating systems it names, or None.
+
+        {'section': 'Software requirements', 'terms': ['aix']}; terms is empty for "which operating systems".
+        """
+        if not self._LEVEL_WORDS.search(query):
+            return None
+        terms = [name for name, rx in self._OS_TERMS.items() if rx.search(query)]
+        if not terms and not self._OS_GENERIC.search(query):
+            return None
+        return {'section': self.SOFTWARE_SECTION, 'terms': terms}
+
     def extract_server_model(self, query: str) -> Optional[str]:
         """
         Extract server model from query
@@ -280,6 +306,7 @@ class QueryClassifier:
                         'mtm_options': watson_result.get('mtm_options', []),
                         'feature_code': None,
                         'retrieval_scope': self.retrieval_scope(query),
+                        'section_hint': self.section_hint(query),
                         'lifecycle_field': watson_entities.get('lifecycle_field'),
                         'confidence': watson_result.get('confidence', 0),
                         'source': 'watson_assistant',
@@ -327,6 +354,7 @@ class QueryClassifier:
             'feature_code': None,
             # Which chunks a RAG search should favour (feature-code chunks vs narrative sections)
             'retrieval_scope': self.retrieval_scope(query),
+            'section_hint': self.section_hint(query),
             'lifecycle_field': lifecycle_field if query_type == QueryType.TABLE_LOOKUP.value else None,
             'confidence': 0.9 if server_model else 0.5,
             'source': source,
