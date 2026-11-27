@@ -88,6 +88,11 @@ VLLM_PORT = os.environ.get('VLLM_PORT', '8000')
 OLLAMA_HOST = os.environ.get('OLLAMA_HOST', 'ollama-service')
 OLLAMA_PORT = os.environ.get('OLLAMA_PORT', '11434')
 
+# External OpenAI-compatible LLM (e.g. the shared Granite on Spyre). When LLM_BASE_URL is set it is
+# used for answer generation unless the request names another backend, and for the feature-code answer.
+LLM_BASE_URL = os.environ.get('LLM_BASE_URL', '').strip().rstrip('/')
+LLM_MODEL = os.environ.get('LLM_MODEL', 'ibm-granite/granite-4.1-8b-fp8')
+
 # Legacy support - default to Granite
 LLAMA_HOST = GRANITE_HOST
 LLAMA_PORT = GRANITE_PORT
@@ -1626,7 +1631,7 @@ def generate():
         temperature = data.get('temperature', 0.1)
         n_predict = data.get('n_predict', 256)
         stream = data.get('stream', False)
-        model = data.get('model', 'granite')  # 'granite' or 'tinyllama'
+        model = data.get('model') or ('openai' if LLM_BASE_URL else 'granite')  # 'granite', 'tinyllama', 'vllm', 'ollama' or 'openai'
         
         # Get clarification parameters from UI
         server_mtm_override = data.get('server_mtm')  # MTM selected by user (e.g., "9009-42A")
@@ -1662,6 +1667,7 @@ def generate():
         
         if server_model_override:
             query_intent['server_model'] = server_model_override
+            query_intent['mtm_options'] = []  # picked from the server list, which shows each MTM
             logger.info(f"Overriding with user-selected server model: {server_model_override}")
         
         if lifecycle_field_override:
@@ -1670,6 +1676,32 @@ def generate():
         
         logger.info(f"Query classified as: {query_type}")
         
+        # Choices the user has already made. Clarification responses hand them back so the UI
+        # can re-send them with the next choice (it re-sends the original question each time).
+        resolved = {k: v for k, v in (('server_mtm', server_mtm_override),
+                                      ('server_model', server_model_override),
+                                      ('lifecycle_field', lifecycle_field_override)) if v}
+        
+        # A model with variants (S924 = A or G, different MTM and manual): ask which one,
+        # whatever the question type. The UI sends the choice back as server_mtm.
+        mtm_options = query_intent.get('mtm_options', [])
+        if mtm_options and query_intent.get('server_model'):
+            server_model = query_intent['server_model']
+            logger.info(f"MTM clarification for {server_model}: {len(mtm_options)} options")
+            return jsonify({
+                'success': True,
+                'content': f"I found multiple variants of the IBM Power {server_model}. Which one are you interested in?",
+                'query_type': 'mtm_clarification_needed',
+                'server_model': server_model,
+                'clarification_options': [
+                    {'label': opt['label'], 'value': opt['mtm']}
+                    for opt in mtm_options
+                ],
+                'resolved': resolved,
+                'ai_services_used': [query_intent.get('source', 'intent')],
+                'processing_method': 'nlp_intent_detection'
+            })
+        
         # Step 2: Handle table lookup queries without LLM
         if query_type == 'table_lookup':
             logger.info("Handling as table lookup query (no LLM needed)")
@@ -1677,24 +1709,6 @@ def generate():
             
             server_model = query_intent.get('server_model')
             lifecycle_field = query_intent.get('lifecycle_field')
-            mtm_options = query_intent.get('mtm_options', [])
-            
-            # Check if Watson is asking for MTM clarification (A vs G model, etc.)
-            if mtm_options:
-                logger.info(f"Watson requesting MTM clarification for {server_model}: {len(mtm_options)} options")
-                return jsonify({
-                    'success': True,
-                    'content': f"I found multiple variants of the IBM Power {server_model}. Which one are you interested in?",
-                    'query_type': 'mtm_clarification_needed',
-                    'server_model': server_model,
-                    'clarification_options': [
-                        {'label': opt['label'], 'value': opt['mtm']}
-                        for opt in mtm_options
-                    ],
-                    'ai_services_used': ['watsonx_assistant'],
-                    'processing_method': 'nlp_intent_detection'
-                })
-            
             if not server_model:
                 # Watson detected lifecycle query but couldn't identify the server
                 # Ask user to clarify which server they're asking about
@@ -1739,6 +1753,7 @@ def generate():
                     'content': f"I understand you're asking about a lifecycle date, but I couldn't identify which IBM Power server you're referring to. Which server are you interested in?",
                     'query_type': 'server_clarification_needed',
                     'clarification_options': clarification_options,
+                    'resolved': resolved,
                     'ai_services_used': ['watsonx_assistant'],
                     'processing_method': 'nlp_intent_detection'
                 })
@@ -1759,6 +1774,7 @@ def generate():
                         {'label': 'Support Level Changed Date', 'value': 'support_level_changed'},
                         {'label': 'Show All Lifecycle Dates', 'value': 'all'}
                     ],
+                    'resolved': resolved,
                     'ai_services_used': ['watsonx_assistant'],
                     'processing_method': 'nlp_intent_detection'
                 })
@@ -2273,20 +2289,34 @@ def generate():
                     f"Answer:"
                 )
 
-                # Call Ollama with the tight prompt
+                # Call the LLM with the tight prompt (external OpenAI-compatible service if configured, else Ollama)
                 ai_services = ['watsonx_assistant', 'opensearch']
                 llm_answer = None
                 try:
-                    llm_url = f"http://{OLLAMA_HOST}:{OLLAMA_PORT}/api/chat"
-                    llm_payload = {
-                        "model": os.environ.get('OLLAMA_MODEL', 'granite4:latest'),
-                        "messages": [{"role": "user", "content": fc_prompt}],
-                        "stream": False,
-                        "options": {"temperature": 0.1, "num_predict": 300}
-                    }
+                    if LLM_BASE_URL:
+                        llm_url = f"{LLM_BASE_URL}/v1/chat/completions"
+                        llm_payload = {
+                            "model": LLM_MODEL,
+                            "messages": [{"role": "user", "content": fc_prompt}],
+                            "temperature": 0.1,
+                            "max_tokens": 300,
+                            "stream": False
+                        }
+                    else:
+                        llm_url = f"http://{OLLAMA_HOST}:{OLLAMA_PORT}/api/chat"
+                        llm_payload = {
+                            "model": os.environ.get('OLLAMA_MODEL', 'granite4:latest'),
+                            "messages": [{"role": "user", "content": fc_prompt}],
+                            "stream": False,
+                            "options": {"temperature": 0.1, "num_predict": 300}
+                        }
                     llm_resp = requests.post(llm_url, json=llm_payload, timeout=60)
                     if llm_resp.status_code == 200:
-                        llm_answer = llm_resp.json()['message']['content'].strip()
+                        llm_json = llm_resp.json()
+                        if LLM_BASE_URL:
+                            llm_answer = llm_json['choices'][0]['message']['content'].strip()
+                        else:
+                            llm_answer = llm_json['message']['content'].strip()
                         ai_services.append('llm')
                         logger.info(f"Feature code LLM answer generated for {feature_code}")
                 except Exception as llm_err:
@@ -2494,6 +2524,10 @@ Answer:"""
             llm_port = TINYLLAMA_PORT
             llm_format = 'llamacpp'
             logger.info(f"Using TinyLlama (llama.cpp) at {llm_host}:{llm_port}")
+        elif model_lower == 'openai' and LLM_BASE_URL:
+            llm_host = llm_port = None
+            llm_format = 'openai'
+            logger.info(f"Using external OpenAI-compatible LLM at {LLM_BASE_URL} ({LLM_MODEL})")
         elif model_lower == 'vllm':
             llm_host = VLLM_HOST
             llm_port = VLLM_PORT
@@ -2527,9 +2561,12 @@ Answer:"""
             }
         elif llm_format == 'openai':
             # vLLM — OpenAI-compatible chat completions
-            llm_url = f"http://{llm_host}:{llm_port}/v1/chat/completions"
+            if model_lower == 'openai':
+                llm_url = f"{LLM_BASE_URL}/v1/chat/completions"
+            else:
+                llm_url = f"http://{llm_host}:{llm_port}/v1/chat/completions"
             payload = {
-                "model": "granite",
+                "model": LLM_MODEL if model_lower == 'openai' else "granite",
                 "messages": [{"role": "user", "content": rag_prompt}],
                 "temperature": temperature,
                 "max_tokens": n_predict,
@@ -3295,9 +3332,11 @@ def health():
         logger.error(f"OpenSearch health check failed: {e}")
         opensearch_status = "disconnected"
     
-    # Check LLM service — Ollama exposes /api/version; llama.cpp exposes /health
+    # Check LLM service — external OpenAI-compatible /v1/models; Ollama /api/version; llama.cpp /health
     try:
-        if os.environ.get('OLLAMA_HOST'):
+        if LLM_BASE_URL:
+            llm_url = f"{LLM_BASE_URL}/v1/models"
+        elif os.environ.get('OLLAMA_HOST'):
             llm_url = f"http://{OLLAMA_HOST}:{OLLAMA_PORT}/api/version"
         else:
             llm_url = f"http://{LLAMA_HOST}:{LLAMA_PORT}/health"

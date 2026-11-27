@@ -11,8 +11,8 @@ const RESPONSE_USER_PROFILE = {
 // message, but the backend needs the ORIGINAL question plus the chosen value.
 let pendingClarification = null;
 
-export function sendClarification(instance, { prompt, param, value, label }) {
-  pendingClarification = { prompt, param, value };
+export function sendClarification(instance, { prompt, param, value, label, resolved }) {
+  pendingClarification = { prompt, param, value, resolved };
   return instance.send(label || value);
 }
 

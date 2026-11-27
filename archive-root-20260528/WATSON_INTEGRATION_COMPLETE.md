@@ -46,7 +46,7 @@ Your Watson Assistant is **already trained** for IBM Power lifecycle queries and
 ```
 User Query: "When did we stop supporting the S924?"
     ↓
-Watson Assistant (f4e6efd1-b43a-490f-af40-3f1b7e219c1a)
+Watson Assistant (<assistant-id>)
     ├─ Intent: Check_Date (0.983)
     ├─ Entity: Lifecycle_date = "EoS"
     └─ Entity: Server_Name = "IBM Power System S924"
@@ -93,9 +93,9 @@ Response: "Support ended on [date]" (instant, no LLM needed)
 ## Your Watson Assistant Credentials
 
 ```bash
-WATSON_ASSISTANT_API_KEY="Y-WtqYpU77yrcm7bs2xHqVKjzm9d6gLUh_4o-B0CChGJ"
-WATSON_ASSISTANT_URL="https://api.eu-gb.assistant.watson.cloud.ibm.com/instances/c6a8deb1-c724-4ad3-ac1d-660144bf8792"
-WATSON_ASSISTANT_ID="f4e6efd1-b43a-490f-af40-3f1b7e219c1a"
+WATSON_ASSISTANT_API_KEY="<your-api-key>"
+WATSON_ASSISTANT_URL="https://api.eu-gb.assistant.watson.cloud.ibm.com/instances/<instance-id>"
+WATSON_ASSISTANT_ID="<assistant-id>"
 ```
 
 ## Deployment Options
@@ -119,9 +119,9 @@ cd Part3-RAG-Sales-Manual/rag-backend
 
 # Set Watson credentials
 oc set env deployment/rag-backend `
-  WATSON_ASSISTANT_API_KEY="Y-WtqYpU77yrcm7bs2xHqVKjzm9d6gLUh_4o-B0CChGJ" `
-  WATSON_ASSISTANT_URL="https://api.eu-gb.assistant.watson.cloud.ibm.com/instances/c6a8deb1-c724-4ad3-ac1d-660144bf8792" `
-  WATSON_ASSISTANT_ID="f4e6efd1-b43a-490f-af40-3f1b7e219c1a"
+  WATSON_ASSISTANT_API_KEY="<your-api-key>" `
+  WATSON_ASSISTANT_URL="https://api.eu-gb.assistant.watson.cloud.ibm.com/instances/<instance-id>" `
+  WATSON_ASSISTANT_ID="<assistant-id>"
 
 # Rebuild and deploy
 oc start-build rag-backend --follow
@@ -134,9 +134,9 @@ oc rollout status deployment/rag-backend
 cd Part3-RAG-Sales-Manual/rag-backend
 
 .\deploy-with-watson.ps1 `
-  -WatsonApiKey "Y-WtqYpU77yrcm7bs2xHqVKjzm9d6gLUh_4o-B0CChGJ" `
-  -WatsonUrl "https://api.eu-gb.assistant.watson.cloud.ibm.com/instances/c6a8deb1-c724-4ad3-ac1d-660144bf8792" `
-  -WatsonAssistantId "f4e6efd1-b43a-490f-af40-3f1b7e219c1a"
+  -WatsonApiKey "<your-api-key>" `
+  -WatsonUrl "https://api.eu-gb.assistant.watson.cloud.ibm.com/instances/<instance-id>" `
+  -WatsonAssistantId "<assistant-id>"
 ```
 
 ## Testing After Deployment

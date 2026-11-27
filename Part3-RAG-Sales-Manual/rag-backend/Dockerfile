@@ -4,7 +4,9 @@
 FROM python:3.12-slim AS builder
 
 # Install system dependencies required for building Python packages
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# (apt over https: plain http to deb.debian.org fails from rootless containers on the Spyre LPAR)
+RUN sed -i 's#http://deb.debian.org#https://deb.debian.org#g' /etc/apt/sources.list.d/debian.sources 2>/dev/null || true; \
+    apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     g++ \
     git \
@@ -28,7 +30,7 @@ RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
     pip install --no-cache-dir --prefer-binary \
         torch==2.9.1 \
         torchvision==0.24.1 \
-        sentence-transformers \
+        "sentence-transformers<6" \
         transformers \
         lxml \
         numpy \
@@ -47,6 +49,7 @@ COPY docling_converter.py .
 COPY hierarchical_chunker.py .
 COPY sales_manual_chunker.py .
 COPY query_classifier.py .
+COPY intent_extractor.py .
 COPY watson_assistant_service.py .
 COPY table_lookup_service.py .
 COPY server_mtm_mapper.py .
@@ -68,7 +71,8 @@ COPY pdfs/*.pdf /app/pdfs/
 FROM python:3.12-slim
 
 # Install only runtime dependencies (curl required for Podman healthcheck)
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN sed -i 's#http://deb.debian.org#https://deb.debian.org#g' /etc/apt/sources.list.d/debian.sources 2>/dev/null || true; \
+    apt-get update && apt-get install -y --no-install-recommends \
     libgomp1 \
     curl \
     && rm -rf /var/lib/apt/lists/*
@@ -88,6 +92,7 @@ COPY --from=builder /app/docling_converter.py .
 COPY --from=builder /app/hierarchical_chunker.py .
 COPY --from=builder /app/sales_manual_chunker.py .
 COPY --from=builder /app/query_classifier.py .
+COPY --from=builder /app/intent_extractor.py .
 COPY --from=builder /app/watson_assistant_service.py .
 COPY --from=builder /app/table_lookup_service.py .
 COPY --from=builder /app/server_mtm_mapper.py .

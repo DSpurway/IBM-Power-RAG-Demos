@@ -1,0 +1,20 @@
+# IBM Power Sales Manual Assistant UI - static files served by nginx.
+#
+# The static assets are built on the laptop (`npm run build` -> build/) and only copied
+# in here, so nothing is compiled on the Power LPAR.
+#
+# Base image: the official multi-arch nginx image from docker.io/library. The Spyre LPAR's
+# containers policy only accepts docker.io/library, icr.io, quay.io/podman and registry.redhat.io,
+# and pulls from registry.access.redhat.com (ubi9/nginx-126) are rejected there.
+#
+#   podman build -t localhost/sa-ui:latest -f Containerfile .
+#   podman run -d -p 8400:8400 -e BACKEND_HOST=sa-rag-backend -e BACKEND_PORT=8080 localhost/sa-ui:latest
+FROM docker.io/library/nginx:stable
+
+COPY nginx.conf.tmpl /etc/nginx/nginx.conf.tmpl
+COPY build /usr/share/nginx/html
+
+EXPOSE 8400
+
+# Render the nginx config with the backend address, then run nginx in the foreground.
+CMD ["/bin/bash", "-c", "envsubst '${BACKEND_HOST} ${BACKEND_PORT}' < /etc/nginx/nginx.conf.tmpl > /etc/nginx/nginx.conf && exec nginx -g 'daemon off;'"]

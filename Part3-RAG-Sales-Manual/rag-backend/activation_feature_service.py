@@ -18,6 +18,9 @@ logger = logging.getLogger(__name__)
 # IMPORTANT: Use Granite service (not TinyLlama) for better quality descriptions
 GRANITE_HOST = os.environ.get('GRANITE_HOST', 'granite-llama-service')
 GRANITE_PORT = os.environ.get('GRANITE_PORT', '8080')
+# External OpenAI-compatible LLM (e.g. Granite on Spyre); takes precedence when set
+LLM_BASE_URL = os.environ.get('LLM_BASE_URL', '').strip().rstrip('/')
+LLM_MODEL = os.environ.get('LLM_MODEL', 'ibm-granite/granite-4.1-8b-fp8')
 
 
 class ActivationFeature:
@@ -89,7 +92,10 @@ class ActivationFeatureService:
         self.use_llm_descriptions = use_llm_descriptions
         self.max_llm_calls = max_llm_calls
         self.llm_calls_made = 0
-        self.llm_url = f"http://{GRANITE_HOST}:{GRANITE_PORT}/v1/completions"
+        if LLM_BASE_URL:
+            self.llm_url = f"{LLM_BASE_URL}/v1/completions"
+        else:
+            self.llm_url = f"http://{GRANITE_HOST}:{GRANITE_PORT}/v1/completions"
         # Category lookup sets (populated from Features - Chargeable lists)
         self.processor_codes = set()
         self.memory_codes = set()
@@ -201,6 +207,7 @@ Description:"""
             response = requests.post(
                 self.llm_url,
                 json={
+                    **({"model": LLM_MODEL} if LLM_BASE_URL else {}),
                     "prompt": prompt,
                     "max_tokens": 32,
                     "temperature": 0.1,

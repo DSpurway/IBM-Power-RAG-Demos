@@ -104,3 +104,27 @@ test('buildRequestBody re-sends the original prompt with the clarification choic
     },
   );
 });
+
+test('earlier clarification choices are re-sent with the next one', () => {
+  const items = mapResponse(
+    {
+      query_type: 'lifecycle_clarification_needed',
+      content: 'Which date?',
+      clarification_options: [{ value: 'withdrawn', label: 'Withdrawal' }],
+      resolved: { server_mtm: '9009-42G' },
+    },
+    'S924 lifecycle',
+  );
+  const { prompt, param, resolved } = items[1].user_defined;
+  assert.deepEqual(
+    buildRequestBody('Withdrawal', { prompt, param, value: 'withdrawn', resolved }),
+    {
+      collection_name: 'sales_manuals',
+      prompt: 'S924 lifecycle',
+      top_k: 3,
+      server_mtm: '9009-42G',
+      lifecycle_field: 'withdrawn',
+    },
+  );
+});
+

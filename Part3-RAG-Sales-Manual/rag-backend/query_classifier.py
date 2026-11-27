@@ -9,6 +9,8 @@ import logging
 from typing import Dict, Optional, List
 from enum import Enum
 
+from intent_extractor import find_servers, llm_extract, variant_options
+
 logger = logging.getLogger(__name__)
 
 # Optional Watson Assistant integration
@@ -266,26 +268,62 @@ class QueryClassifier:
             except Exception as e:
                 logger.warning(f"Watson intent extraction failed: {e}")
         
-        # If Watson is not available, detect query type but don't extract entities
-        # Let the system ask for clarification instead of using regex
-        query_type = self.classify(query)
+        # Watson is not available: exact server tokens from sources.json plus regex, and
+        # the LLM (intent_extractor) for free-text wording the regex cannot handle.
+        query_type = self.classify(query).value
+        lifecycle_field = self._single_lifecycle_field(query)
+        servers = find_servers(query)
+        server_model, mtm = servers[0] if len(servers) == 1 else (None, None)
+        source = 'deterministic'
+        
+        # Shortcut: exact server, a lifecycle regex hit and exactly one kind of date
+        # mentioned. Anything else (typos, other wording, two dates) goes to the LLM.
+        settled = query_type == QueryType.TABLE_LOOKUP.value and server_model and lifecycle_field
+        llm = None if settled else llm_extract(query)
+        if llm:
+            source = 'llm'
+            # An exact server token in the question beats the LLM's reading of it.
+            server_model = server_model or llm['server_model']
+            # Regex hits for activation / feature-code questions stand; the LLM refines the rest.
+            if query_type in (QueryType.RAG.value, QueryType.TABLE_LOOKUP.value):
+                query_type = llm['query_type'] or query_type
+            lifecycle_field = llm['lifecycle_field'] or lifecycle_field
         
         intent = {
-            'query_type': query_type.value,
+            'query_type': query_type,
             'original_query': query,
-            'server_model': None,
-            'mtm': None,
-            'mtm_options': [],
+            'server_model': server_model,
+            'mtm': mtm,
+            # "S924" alone could be the A or the G model (different MTMs, different manuals)
+            'mtm_options': variant_options(server_model) if server_model and not mtm else [],
             'feature_code': None,
-            'lifecycle_field': None,
-            'confidence': 0.5,
-            'source': 'regex_classification_only',
-            'needs_clarification': True  # Always need clarification without Watson
+            'lifecycle_field': lifecycle_field if query_type == QueryType.TABLE_LOOKUP.value else None,
+            'confidence': 0.9 if server_model else 0.5,
+            'source': source,
+            'needs_clarification': server_model is None
         }
         
-        logger.info(f"Regex classification (no entity extraction): {intent}")
+        logger.info(f"Intent ({source}): {intent}")
         return intent
     
+    # Wording for each lifecycle date. A question counts as clear only if it hits one field.
+    LIFECYCLE_KEYWORDS = {
+        'announced': ('announce',),
+        'available': ('available', 'availability'),
+        'withdrawn': ('withdraw', 'no longer sell', 'end of marketing', 'stop selling', 'stop marketing'),
+        'support_level_changed': ('support level', 'support changed'),
+        'discontinued': ('discontinue', 'discontinuation'),
+        'end_of_support': ('stopped supporting', 'no longer support', 'stop support', 'end support',
+                           'end of support', 'end of service', 'end of life', 'standard support'),
+    }
+
+    def _single_lifecycle_field(self, query: str) -> Optional[str]:
+        """The lifecycle field if the question mentions exactly one kind of date, else None."""
+        query_lower = query.lower()
+        hits = {field for field, words in self.LIFECYCLE_KEYWORDS.items()
+                if any(w in query_lower for w in words)}
+        return hits.pop() if len(hits) == 1 else None
+
     def _extract_lifecycle_field(self, query: str) -> Optional[str]:
         """
         Determine which lifecycle field is being asked about
@@ -297,6 +335,10 @@ class QueryClassifier:
         
         if 'announce' in query_lower:
             return 'announced'
+        elif 'stopped supporting' in query_lower or 'no longer support' in query_lower:
+            return 'end_of_support'
+        elif 'no longer sell' in query_lower or 'end of marketing' in query_lower:
+            return 'withdrawn'
         elif 'available' in query_lower or 'availability' in query_lower:
             return 'available'
         elif 'withdraw' in query_lower or 'withdrawal' in query_lower:

@@ -92,7 +92,10 @@ services:
       - SCRAPER_URL=https://ibm-docs-scraper-enhanced.29bw00k1vhg4.eu-gb.codeengine.appdomain.cloud
       # Ollama model name — must match what is pulled into Ollama
       - OLLAMA_MODEL=granite4:latest
-      # Watson Assistant (optional — leave empty to disable)
+      # LLM that works out the server and question type (optional — empty = exact match only)
+      - LLM_BASE_URL=${LLM_BASE_URL:-}
+      - LLM_MODEL=${LLM_MODEL:-ibm-granite/granite-4.1-8b-fp8}
+      # Watson Assistant (legacy, optional — leave empty to disable)
       - WATSON_ASSISTANT_API_KEY=${WATSON_ASSISTANT_API_KEY:-}
       - WATSON_ASSISTANT_URL=${WATSON_ASSISTANT_URL:-}
       - WATSON_ASSISTANT_ID=${WATSON_ASSISTANT_ID:-}

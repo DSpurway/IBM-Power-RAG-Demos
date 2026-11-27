@@ -5,11 +5,12 @@ Tests the existing Watson Assistant to understand its response format
 
 import requests
 import json
+import os
 import sys
 
 # Your Watson Assistant credentials
-WATSON_API_KEY = "Y-WtqYpU77yrcm7bs2xHqVKjzm9d6gLUh_4o-B0CChGJ"
-WATSON_URL = "https://api.eu-gb.assistant.watson.cloud.ibm.com/instances/c6a8deb1-c724-4ad3-ac1d-660144bf8792"
+WATSON_API_KEY = os.environ["WATSON_ASSISTANT_API_KEY"]
+WATSON_URL = os.environ["WATSON_ASSISTANT_URL"]
 WATSON_VERSION = "2021-11-27"
 
 # Test queries

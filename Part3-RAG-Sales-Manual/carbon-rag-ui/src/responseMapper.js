@@ -36,7 +36,7 @@ export function buildRequestBody(prompt, pending) {
     prompt: pending ? pending.prompt : prompt,
     top_k: TOP_K,
   };
-  if (pending) body[pending.param] = pending.value;
+  if (pending) Object.assign(body, pending.resolved, { [pending.param]: pending.value });
   return body;
 }
 
@@ -55,6 +55,7 @@ export function mapResponse(data, prompt) {
       userDefined('clarification', {
         prompt,
         param: CLARIFICATION_PARAM[queryType],
+        resolved: data.resolved || {},
         options: data.clarification_options,
       }),
     );

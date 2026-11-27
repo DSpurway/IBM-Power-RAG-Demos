@@ -28,9 +28,9 @@ git push
 ```powershell
 # These go to OpenShift, NOT to Git
 oc set env deployment/rag-backend `
-  WATSON_ASSISTANT_API_KEY="Y-WtqYpU77yrcm7bs2xHqVKjzm9d6gLUh_4o-B0CChGJ" `
-  WATSON_ASSISTANT_URL="https://api.eu-gb.assistant.watson.cloud.ibm.com/instances/c6a8deb1-c724-4ad3-ac1d-660144bf8792" `
-  WATSON_ASSISTANT_ID="f4e6efd1-b43a-490f-af40-3f1b7e219c1a"
+  WATSON_ASSISTANT_API_KEY="<your-api-key>" `
+  WATSON_ASSISTANT_URL="https://api.eu-gb.assistant.watson.cloud.ibm.com/instances/<instance-id>" `
+  WATSON_ASSISTANT_ID="<assistant-id>"
 ```
 
 ## Step 3: Rebuild Backend

@@ -58,6 +58,7 @@ export function ClarificationBlock({ data, instance }) {
               param: data.param,
               value: opt.value,
               label: opt.label,
+              resolved: data.resolved,
             });
           }}
         >

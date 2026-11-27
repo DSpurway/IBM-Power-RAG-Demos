@@ -14,13 +14,13 @@ from server_mtm_mapper import get_collection_name_for_model
 logger = logging.getLogger(__name__)
 
 
-def _generate_index_name(collection_name):
+def _generate_index_name(collection_name, prefix='rag'):
     """
-    Generate OpenSearch index name from collection name
-    Uses the collection name directly for readability and easier debugging
-    Example: rag_mtm_9009_42a -> rag_mtm_9009_42a
+    Generate OpenSearch index name from collection name.
+    Must match app._generate_index_name (the index the ingest endpoints create):
+    "<prefix>_<md5(collection_name)>".
     """
-    return collection_name
+    return f"{prefix}_{hashlib.md5(collection_name.encode()).hexdigest()}"
 
 
 class TableLookupService:
@@ -85,7 +85,7 @@ class TableLookupService:
         try:
             # Use the MTM-based collection name to search in the correct index
             # This ensures we find the lifecycle table for the specific server, not other servers
-            index_name = _generate_index_name(collection_name)
+            index_name = _generate_index_name(collection_name, self.index_prefix)
             
             logger.info(f"Searching in specific index: {index_name} (collection: {collection_name})")
             

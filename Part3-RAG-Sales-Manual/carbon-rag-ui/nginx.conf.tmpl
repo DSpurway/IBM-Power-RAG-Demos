@@ -1,0 +1,53 @@
+worker_processes  auto;
+
+error_log  /dev/stderr warn;
+pid        /tmp/nginx.pid;
+
+events {
+    worker_connections  1024;
+}
+
+http {
+    proxy_temp_path /tmp/proxy_temp;
+    client_body_temp_path /tmp/client_temp;
+    fastcgi_temp_path /tmp/fastcgi_temp;
+    uwsgi_temp_path /tmp/uwsgi_temp;
+    scgi_temp_path /tmp/scgi_temp;
+
+    include       /etc/nginx/mime.types;
+    default_type  application/octet-stream;
+
+    access_log  /dev/stdout;
+
+    sendfile        on;
+    keepalive_timeout  65;
+
+    server {
+        listen 8400;
+
+        # Static React app (built with `npm run build`)
+        location / {
+            root /usr/share/nginx/html;
+            index index.html;
+            try_files $uri /index.html;
+        }
+
+        # rag-backend API. Same origin as the UI, so no CORS is needed.
+        # Answers can take a while (retrieval + rerank + LLM), and ingest posts large bodies.
+        location /api/ {
+            proxy_pass http://${BACKEND_HOST}:${BACKEND_PORT};
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_read_timeout 300s;
+            proxy_send_timeout 300s;
+            client_max_body_size 50m;
+        }
+
+        location /health {
+            proxy_pass http://${BACKEND_HOST}:${BACKEND_PORT};
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+        }
+    }
+}

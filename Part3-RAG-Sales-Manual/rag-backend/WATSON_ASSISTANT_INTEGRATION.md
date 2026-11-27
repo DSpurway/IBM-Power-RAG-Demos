@@ -57,8 +57,8 @@ WATSON_ASSISTANT_ID=your-assistant-id-here  # Optional, can be configured in Wat
 ### Your Current Credentials
 
 Based on your information:
-- **API Key**: `Y-WtqYpU77yrcm7bs2xHqVKjzm9d6gLUh_4o-B0CChGJ`
-- **URL**: `https://api.eu-gb.assistant.watson.cloud.ibm.com/instances/c6a8deb1-c724-4ad3-ac1d-660144bf8792`
+- **API Key**: `<your-api-key>`
+- **URL**: `https://api.eu-gb.assistant.watson.cloud.ibm.com/instances/<instance-id>`
 
 ### OpenShift Deployment
 
@@ -67,8 +67,8 @@ Update your deployment YAML or use `oc set env`:
 ```bash
 # Set Watson Assistant credentials
 oc set env deployment/rag-backend \
-  WATSON_ASSISTANT_API_KEY="Y-WtqYpU77yrcm7bs2xHqVKjzm9d6gLUh_4o-B0CChGJ" \
-  WATSON_ASSISTANT_URL="https://api.eu-gb.assistant.watson.cloud.ibm.com/instances/c6a8deb1-c724-4ad3-ac1d-660144bf8792"
+  WATSON_ASSISTANT_API_KEY="<your-api-key>" \
+  WATSON_ASSISTANT_URL="https://api.eu-gb.assistant.watson.cloud.ibm.com/instances/<instance-id>"
 
 # Restart the deployment
 oc rollout restart deployment/rag-backend

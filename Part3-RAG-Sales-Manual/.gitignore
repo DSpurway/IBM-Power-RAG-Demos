@@ -1,0 +1,3 @@
+
+# local LPAR helper scripts (password comes from env var SPW, never stored)
+.lpar/

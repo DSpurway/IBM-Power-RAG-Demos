@@ -78,8 +78,8 @@ The query classifier now:
 
 **Environment Variables**:
 ```bash
-WATSON_ASSISTANT_API_KEY=Y-WtqYpU77yrcm7bs2xHqVKjzm9d6gLUh_4o-B0CChGJ
-WATSON_ASSISTANT_URL=https://api.eu-gb.assistant.watson.cloud.ibm.com/instances/c6a8deb1-c724-4ad3-ac1d-660144bf8792
+WATSON_ASSISTANT_API_KEY=<your-api-key>
+WATSON_ASSISTANT_URL=https://api.eu-gb.assistant.watson.cloud.ibm.com/instances/<instance-id>
 WATSON_ASSISTANT_ID=<optional-assistant-id>
 ```
 
@@ -126,8 +126,8 @@ This fixes the immediate issue. The system will use regex-based classification.
 # Deploy with Watson Assistant
 cd Part3-RAG-Sales-Manual/rag-backend
 .\deploy-with-watson.ps1 `
-  -WatsonApiKey "Y-WtqYpU77yrcm7bs2xHqVKjzm9d6gLUh_4o-B0CChGJ" `
-  -WatsonUrl "https://api.eu-gb.assistant.watson.cloud.ibm.com/instances/c6a8deb1-c724-4ad3-ac1d-660144bf8792"
+  -WatsonApiKey "<your-api-key>" `
+  -WatsonUrl "https://api.eu-gb.assistant.watson.cloud.ibm.com/instances/<instance-id>"
 ```
 
 This deploys the bug fix AND enables Watson Assistant for enhanced NLP.
@@ -137,8 +137,8 @@ This deploys the bug fix AND enables Watson Assistant for enhanced NLP.
 ```bash
 # Set Watson credentials
 oc set env deployment/rag-backend \
-  WATSON_ASSISTANT_API_KEY="Y-WtqYpU77yrcm7bs2xHqVKjzm9d6gLUh_4o-B0CChGJ" \
-  WATSON_ASSISTANT_URL="https://api.eu-gb.assistant.watson.cloud.ibm.com/instances/c6a8deb1-c724-4ad3-ac1d-660144bf8792"
+  WATSON_ASSISTANT_API_KEY="<your-api-key>" \
+  WATSON_ASSISTANT_URL="https://api.eu-gb.assistant.watson.cloud.ibm.com/instances/<instance-id>"
 
 # Rebuild
 oc start-build rag-backend --follow

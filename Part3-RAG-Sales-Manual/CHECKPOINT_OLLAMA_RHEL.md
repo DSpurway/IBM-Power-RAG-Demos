@@ -231,3 +231,52 @@ Supersedes "No UI code written yet", "NEXT: scaffold" and "Uncommitted work" in 
 
 **Starting a new task** - paste: "Continue the IBM Power Sales Manual Assistant work. Read `Part3-RAG-Sales-Manual/CHECKPOINT_OLLAMA_RHEL.md` (section 'UPDATE 2026-11-26 (evening)') and `UI_LAUNCHPAD_PLAN.md`. Chat UI, Sources page and family routing are done and pushed. First ask me the open decision about how the backend identifies the server in a question, then packaging and the LPAR deployment." The LPAR password is not stored anywhere; ask for it when needed (env var `SPW` for `%TEMP%\bob\sshrun.py`, venv `%TEMP%\bob\selvenv`).
 
+
+## UPDATE 2026-11-26 (late) - watsonx Assistant retired; LLM intent extraction added
+
+- **Watson is gone for good.** The assistant the backend used was lost when its API key/instance was cleaned up in the IBM Cloud account. The replacement key (service "IBM Power Seller Demos by David") belongs to a different, Plus Trial instance in a frozen account: valid key, but no usable assistant. Decision: do not rebuild it; do not move to Orchestrate for this (cloud dependency, same failure mode). The Watson code stays as an optional legacy path.
+- **New `rag-backend/intent_extractor.py`** (wired into `QueryClassifier.get_query_intent`): (1) exact server model / MTM tokens from `sources.json` (`S924` vs `S924-G`, `LC922` vs `L922`, `9242-21T`); (2) optional LLM (OpenAI-compatible `/v1/chat/completions`, enabled by `LLM_BASE_URL`, model `LLM_MODEL` default `ibm-granite/granite-4.1-8b-fp8`) returns JSON for server / query type / lifecycle field, validated against `sources.json`. An exact server token in the question beats the LLM; a clear lifecycle question ("When is the E980 withdrawn?") skips the LLM; any LLM failure falls back to the deterministic result. Allowed query types from the LLM: `table_lookup`, `activation_lookup`, `rag`.
+- Tests: `rag-backend/test_intent_extractor.py` (LLM mocked) + `test_server_mtm_mapper.py`, 19 pass. NOT yet tested against the real Spyre Granite (needs the LPAR).
+- `LLM_BASE_URL`/`LLM_MODEL` added to `Dockerfile` (module copied), `podman/podman-compose.yml`, `podman/env.example`, `restart_backend.sh` (now reads `.env`, gitignored).
+- **Secrets:** the dead Watson key and instance/assistant IDs were scrubbed from the working tree (5 docs, `test_watson_assistant.py` now reads env vars, `restart_backend.sh`). They are STILL IN GIT HISTORY (commits `70c9859`, `3d94b9a`, pushed to `DSpurway/IBM-Power-RAG-Demos`). The key is deleted so it cannot be used; rewriting history is the user's decision. The replacement key was pasted in chat: delete it in IBM Cloud if the instance is not wanted.
+- Still hard-coded in `app.py` responses: `ai_services_used: ['watsonx_assistant']` and `processing_method: 'nlp_intent_detection'`. The UI hides the tag; change to the intent `source` when convenient.
+- **Next:** (1) user to confirm the commit; (2) on the LPAR set `LLM_BASE_URL` (resolve `llm-1241b938ce` IP) and try real wording ("When did we stop supporting the S924?", "S1112 lifecycle", "activation features for the S1022"); check latency of the extraction call; (3) then packaging and LPAR deployment as in the previous section.
+
+### Follow-up (same day): stricter shortcut + A/G clarification
+- LLM is skipped only when: exact server token + lifecycle regex hit + exactly ONE kind of date keyword (`QueryClassifier.LIFECYCLE_KEYWORDS`, `_single_lifecycle_field`). Two dates, typos or other wording go to the LLM; with no LLM and two dates the user is asked which date.
+- Bare "S924" (also S922, S914) now asks A or G (`intent_extractor.variant_options`, `app.py` generic `mtm_clarification_needed` block, any question type). "S924-G", "S924 G" or an MTM does not ask. S1112 (two MTMs, one model) does not ask: the table lookup lists both.
+- Clarifications used to lose earlier choices (UI re-sends the original question with ONE param), which would loop A/G -> date -> A/G. Backend now returns `resolved` with each clarification; UI (`responseMapper.js`, `ChatBlocks.jsx`, `customSendMessage.jsx`) re-sends them with the next choice. UI needs a rebuild/redeploy for this.
+- Tests: 25 backend (`python -m unittest test_intent_extractor test_server_mtm_mapper`), 8 UI (`node --test src/responseMapper.test.js`).
+
+
+## UPDATE 2026-11-27 - DEPLOYED on the Spyre LPAR (UI + backend + OpenSearch, Watson-free)
+
+**Live:** `http://spyre.aixncc.uk.ibm.com:8400/` (IBM network). Backend is `127.0.0.1:8401` on the LPAR only; OpenSearch has no published port. Verified in Chrome: suggested prompt "When is the IBM Power E980 withdrawn from marketing?" returns the lifecycle list via "Direct table lookup (no LLM)".
+
+**What runs (rootless podman as `david`, all prefixed `sa-`, network `sales-assistant-net`)**
+- `sa-opensearch` (`icr.io/ppc64le-oss/opensearch-ppc64le:3.3.0`, 2 GB heap, volume `sa-opensearch-data`), `sa-rag-backend` (`localhost/sa-rag-backend`, built on the LPAR, HF cache volume `sa-hf-cache`), `sa-ui` (`localhost/sa-ui`, nginx serving the Vite build, proxies `/api/` + `/health`). `--restart always`; `loginctl enable-linger david` done; `podman-restart.service` enabled; firewall port 8400/tcp open.
+- All 27 families ingested from the laptop through `:8400` (`laptop-scraper/ingest_corpus_to_backend.py --backend-url http://spyre.aixncc.uk.ibm.com:8400 --all`, run with the selenium venv; about 10 min).
+- Everything is driven by `podman/deploy-lpar.sh` (`preflight|build [be|ui]|up|status|logs|down`) staged in `~/sales-assistant/` with `rag-backend/` and `carbon-rag-ui/` (Containerfile, nginx.conf.tmpl, `build/`). `LLM_BASE_URL` is resolved from `sudo podman inspect llm-1241b938ce-llm` on each `up` (currently `http://10.89.0.72:8000`); override in `~/sales-assistant/.env`.
+- Laptop helpers live in the git-ignored `Part3-RAG-Sales-Manual/.lpar/` (`lpar.py`: `run|script|put` over SSH, password only via env var `SPW`; uses system python/paramiko). Redeploy loop: edit, `put` changed files to `~/sales-assistant/...`, run `deploy-lpar.sh build be && deploy-lpar.sh up` (the pip layer is cached, about 1 min). A UI change needs `npm run build`, then upload `build/` + rebuild `ui`.
+
+**Code changes made for the LPAR (all in this commit)**
+- `/api/generate`, the feature-code answer, activation descriptions and `/health` now use `LLM_BASE_URL`/`LLM_MODEL` (OpenAI-compatible) when set. Before this they only knew llama.cpp/Ollama, so the LPAR would have had no LLM for answers. Default model param is `openai` when `LLM_BASE_URL` is set.
+- `table_lookup_service._generate_index_name` now hashes like `app.py` (`rag_<md5(collection)>`). It used the plain name, missed the index, and fell back to `rag_*` over all indices; this only looked fine with one family loaded.
+- `intent_extractor` prompt: `activation_lookup` only for "activation"/Capacity on Demand; "maximum memory" etc. go to `rag`.
+- Backend `Dockerfile`: apt over https (plain http to deb.debian.org fails from rootless containers here) and `sentence-transformers<6` (6.x needs transformers 5; the image has 4.57).
+- UI image uses `docker.io/library/nginx:stable`: the LPAR's `/etc/containers/policy.json` only allows `docker.io/library`, `icr.io`, `quay.io/podman`, `registry.redhat.io` (so `registry.access.redhat.com/ubi9/nginx-126` is rejected). Do not edit that policy; it is Andrew's.
+
+**Measured**
+- Lifecycle answers: about 0.2 s (table lookup, no LLM). Clarifications (S924, S1112): about 3.5 s (intent LLM call). Activation lists: 4 s. RAG answers: 25-35 s, almost all LLM decode: a direct call to the shared Spyre Granite gives about 8 tokens/s (155 tokens in 19 s). Streaming the answer in the UI would help perceived latency.
+- `vm.max_map_count` is 65530 on the LPAR (OpenSearch wants 262144); it runs fine with `discovery.type=single-node`. Raise it only if OpenSearch complains (system-wide, needs sudo).
+
+**Open issues / next steps (in order)**
+1. **RAG retrieval quality** (biggest remaining problem): "What is the maximum memory of the E980?" and "Which operating systems does the S1022 support?" get "context does not contain..." because hybrid search + rerank (local `cross-encoder/ms-marco-MiniLM-L-6-v2`, top-3 scores often negative) does not surface the right chunk. Dimensions/weight works. Look at the chunks returned for these, query rewrite (strip server name), top_k, and the section-aware chunks; consider the Launchpad reranker (port/API still unknown).
+2. Streaming of RAG answers to the UI; or lower `n_predict`.
+3. Still hard-coded `ai_services_used: ['watsonx_assistant']` / `processing_method: 'nlp_intent_detection'` in `app.py` (UI hides the tag).
+4. `podman/deploy.sh` / `manage.sh` / OCP scripts still reference the old Next.js UI (not used now).
+5. Ask the user: push to GitHub (commit is local until confirmed), keep `laptop-scraper/corpus/*.html.gz`, and whether to delete the replacement Watson key in IBM Cloud. Repo history still contains the dead Watson key (see section above).
+6. `git` line endings: `deploy-lpar.sh` must be LF on the LPAR; the upload step runs `sed -i 's/\r$//'`.
+
+**Starting a new task** - paste: "Continue the IBM Power Sales Manual Assistant work. Read `Part3-RAG-Sales-Manual/CHECKPOINT_OLLAMA_RHEL.md` (section 'UPDATE 2026-11-27'). The stack is deployed on the Spyre LPAR at http://spyre.aixncc.uk.ibm.com:8400/. Next: improve RAG retrieval quality for specification questions (maximum memory, operating systems), then streaming." Ask me for the LPAR password; use env var `SPW` with `.lpar/lpar.py`.
+
