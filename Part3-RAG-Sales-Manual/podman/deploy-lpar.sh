@@ -17,6 +17,7 @@
 #   ./deploy-lpar.sh up              (re)create network, volumes and containers
 #   ./deploy-lpar.sh status
 #   ./deploy-lpar.sh logs <opensearch|backend|ui>
+#   ./deploy-lpar.sh refresh <install|remove|status|run>   daily Sales Manual change check (user systemd timer)
 #   ./deploy-lpar.sh down            stop and remove the containers (volumes are kept)
 # =============================================================================
 set -euo pipefail
@@ -37,6 +38,7 @@ IMG_OS=icr.io/ppc64le-oss/opensearch-ppc64le:3.3.0
 UI_PORT="${UI_PORT:-8400}"          # agreed with Andrew (84xx, IBM network only)
 BE_PORT="${BE_PORT:-8401}"          # bound to localhost only
 LLM_MODEL="${LLM_MODEL:-ibm-granite/granite-4.1-8b-fp8}"
+SCRAPER_URL="${SCRAPER_URL:-https://ibm-docs-scraper-enhanced.29bw00k1vhg4.eu-gb.codeengine.appdomain.cloud}"   # Code Engine
 SPYRE_LLM_CONTAINER="${SPYRE_LLM_CONTAINER:-llm-1241b938ce-llm}"   # Spyre "Digital Assistant"
 
 say() { echo "[$(date '+%H:%M:%S')] $*"; }
@@ -109,6 +111,7 @@ up() {
         -e OPENSEARCH_HOST="${C_OS}" -e OPENSEARCH_PORT=9200 \
         -e OPENSEARCH_USERNAME=admin -e OPENSEARCH_PASSWORD=admin -e OPENSEARCH_DB_PREFIX=rag \
         -e LLM_BASE_URL="${llm}" -e LLM_MODEL="${LLM_MODEL}" \
+        -e SCRAPER_URL="${SCRAPER_URL}" \
         -e CORS_ORIGIN='*' \
         -e HF_HOME=/hf-cache \
         -v "${V_HF}:/hf-cache" \
@@ -145,12 +148,67 @@ down() {
     say "Containers removed. Volumes ${V_OS} and ${V_HF} kept."
 }
 
+# Daily check of the Sales Manuals: the backend asks the Code Engine scraper for each page, compares the content
+# hash with what is indexed and re-indexes only the families that changed. The scraper cannot call us (this box is
+# IBM-network only), so a user-level systemd timer does the triggering. Nothing system-wide is touched.
+refresh() {
+    local dir="${HOME}/.config/systemd/user" url="http://127.0.0.1:${BE_PORT}/api/refresh-manuals"
+    case "${1:-status}" in
+        install)
+            mkdir -p "${dir}"
+            cat > "${dir}/sa-manual-refresh.service" <<EOF
+[Unit]
+Description=Check the IBM Power Sales Manuals for changes and re-index the changed ones
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/curl -sS --max-time 30 -X POST ${url}
+EOF
+            cat > "${dir}/sa-manual-refresh.timer" <<EOF
+[Unit]
+Description=Daily check of the IBM Power Sales Manuals
+
+[Timer]
+OnCalendar=*-*-* 03:30:00
+RandomizedDelaySec=15min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+EOF
+            systemctl --user daemon-reload
+            systemctl --user enable --now sa-manual-refresh.timer
+            refresh status ;;
+        remove)
+            systemctl --user disable --now sa-manual-refresh.timer 2>/dev/null || true
+            rm -f "${dir}/sa-manual-refresh.service" "${dir}/sa-manual-refresh.timer"
+            systemctl --user daemon-reload
+            say "Timer removed." ;;
+        run)   # refresh run '{"force": true}' | '{"family": "9080-03"}'
+            local body="${2:-}"; [[ -n "${body}" ]] || body='{}'
+            curl -sS --max-time 30 -X POST -H 'Content-Type: application/json' -d "${body}" "${url}"; echo ;;
+        status)
+            systemctl --user list-timers sa-manual-refresh.timer --no-pager || true
+            curl -sS --max-time 10 "${url}/status" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+print('last run: started', d['started_at'], 'finished', d['finished_at'], 'running', d['in_progress'])
+print('result: ', d['done'], 'of', d['total'], d['counts'])
+for r in d['results']:
+    if r['status'] != 'unchanged':
+        print(' ', r['family'], r['status'], r.get('reason'))
+" || true ;;
+        *) echo "refresh <install|remove|status|run>"; exit 1 ;;
+    esac
+}
+
 case "${1:-}" in
     preflight) preflight ;;
     build)     build "${2:-all}" ;;
     up)        up ;;
     status)    status ;;
     logs)      logs "${2:-backend}" ;;
+    refresh)   refresh "${2:-status}" "${3:-}" ;;
     down)      down ;;
     *) sed -n '2,25p' "$0"; exit 1 ;;
 esac

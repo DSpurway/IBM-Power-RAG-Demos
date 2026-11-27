@@ -61,6 +61,7 @@ COPY sources.json .
 COPY ibm_docs_tree.py .
 COPY chunk_tree.py .
 COPY software_levels.py .
+COPY manual_refresh.py .
 
 # Create PDF directory and copy sample PDFs
 RUN mkdir -p /app/pdfs
@@ -105,6 +106,7 @@ COPY --from=builder /app/sources.json .
 COPY --from=builder /app/ibm_docs_tree.py .
 COPY --from=builder /app/chunk_tree.py .
 COPY --from=builder /app/software_levels.py .
+COPY --from=builder /app/manual_refresh.py .
 COPY --from=builder /app/pdfs /app/pdfs
 
 # Environment variables with defaults

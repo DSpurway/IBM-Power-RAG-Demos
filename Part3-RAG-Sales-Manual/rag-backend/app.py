@@ -366,7 +366,12 @@ def _setup_index(index_name, dim=384):
                         "subsubsection": {"type": "text"},
                         "type": {"type": "keyword"},
                         "part_index": {"type": "integer"},
-                        "processing_method": {"type": "keyword"}
+                        "processing_method": {"type": "keyword"},
+                        # Same as the dynamic text mapping, but without date detection: it read "9242-21B"
+                        # (the S1112's two MTMs) as a date and then rejected "9242-21T", so nothing was indexed
+                        "mtm": {"type": "text", "fields": {"keyword": {"type": "keyword", "ignore_above": 256}}},
+                        "mtms": {"type": "text", "fields": {"keyword": {"type": "keyword", "ignore_above": 256}}},
+                        "family": {"type": "text", "fields": {"keyword": {"type": "keyword", "ignore_above": 256}}}
                     }
                 }
             }
@@ -1420,6 +1425,89 @@ def search():
 # SCRAPED CONTENT INGESTION ENDPOINT
 # ============================================================================
 
+def _index_chunks(collection_name, chunks, url, replace=False):
+    """Embed and bulk-index pre-computed chunks into the collection's index.
+
+    replace=True deletes the index first (chunk ids are positional, so a re-chunked family would leave
+    stale chunks behind). Returns (indexed_count, failed_count, chunk_types).
+    """
+    from opensearchpy.helpers import bulk
+    chunk_types = {}
+    for chunk in chunks:
+        chunk_type = chunk.get('metadata', {}).get('section_type', 'content_section')
+        chunk_types[chunk_type] = chunk_types.get(chunk_type, 0) + 1
+    
+    client = get_opensearch_client()
+    embeddings = get_embeddings()
+    
+    index_name = _generate_index_name(collection_name)
+    dim = embeddings.client.get_sentence_embedding_dimension()
+    # With replace, chunks go into a new index and only replace the old one if all of them were indexed,
+    # so a bad scrape or a mapping error can never leave the family empty.
+    write_index = index_name
+    if replace and client.indices.exists(index=index_name):
+        write_index = f"{index_name}_new"
+        if client.indices.exists(index=write_index):
+            client.indices.delete(index=write_index)
+    _setup_index(write_index, dim)
+    
+    # Batch embed and bulk index chunks (batches of 100)
+    batch_size = 100
+    indexed_count = 0
+    failed_count = 0
+    
+    for batch_start in range(0, len(chunks), batch_size):
+        batch = chunks[batch_start:batch_start + batch_size]
+        texts = [c['text'] for c in batch]
+        
+        try:
+            batch_embeddings = embeddings.embed_documents(texts)
+        except Exception as e:
+            logger.warning(f"Batch embedding failed ({e}), falling back to embed_query per chunk")
+            batch_embeddings = [embeddings.embed_query(t) for t in texts]
+            
+        actions = []
+        for i, chunk in enumerate(batch):
+            global_idx = batch_start + i
+            meta = chunk.get('metadata', {})
+            source_val = meta.get('source', url)
+            sec_title = meta.get('section_title', '')
+            doc_id = hashlib.md5(f"{source_val}_{sec_title}_{global_idx}".encode()).hexdigest()
+            
+            actions.append({
+                "_index": write_index,
+                "_id": doc_id,
+                "_source": {
+                    "text": chunk["text"],
+                    "embedding": batch_embeddings[i],
+                    "metadata": meta
+                }
+            })
+            
+        try:
+            success_n, errors = bulk(client, actions, refresh=False, stats_only=True)
+            indexed_count += success_n
+            failed_count += len(actions) - success_n
+        except Exception as e:
+            logger.error(f"Bulk index error on batch {batch_start}: {e}")
+            failed_count += len(actions)
+            
+    client.indices.refresh(index=write_index)
+    if write_index != index_name:
+        if failed_count or not indexed_count:
+            client.indices.delete(index=write_index)
+            logger.error(f"Replace of {index_name} abandoned ({indexed_count} indexed, {failed_count} failed); old index kept")
+        else:
+            client.indices.delete(index=index_name)  # chunk ids are positional: nothing of the old version may stay
+            _setup_index(index_name, dim)
+            client.reindex(body={"source": {"index": write_index}, "dest": {"index": index_name}},
+                           wait_for_completion=True, refresh=True, request_timeout=600)
+            client.indices.delete(index=write_index)
+            logger.info(f"Replaced index {index_name} with {indexed_count} chunks")
+    logger.info(f"Ingestion complete for {collection_name}: {indexed_count} indexed, {failed_count} failed")
+    return indexed_count, failed_count, chunk_types
+
+
 @app.route('/api/ingest-chunks', methods=['POST'])
 @app.route('/ingest-chunks', methods=['POST'])
 def ingest_chunks():
@@ -1462,65 +1550,11 @@ def ingest_chunks():
                 
         logger.info(f"Ingesting {len(chunks)} pre-computed chunks into collection: {collection_name} (family: {family}, mtms: {mtms})")
         
-        # Log chunk distribution by type
-        chunk_types = {}
-        for chunk in chunks:
-            chunk_type = chunk.get('metadata', {}).get('section_type', 'content_section')
-            chunk_types[chunk_type] = chunk_types.get(chunk_type, 0) + 1
-        
-        client = get_opensearch_client()
-        embeddings = get_embeddings()
-        
-        index_name = _generate_index_name(collection_name)
-        if data.get('replace') and client.indices.exists(index=index_name):
-            # Chunk ids are positional, so a re-chunked family would leave stale chunks behind
-            client.indices.delete(index=index_name)
-            logger.info(f"Replacing index {index_name}: old chunks deleted")
-        _setup_index(index_name, embeddings.client.get_sentence_embedding_dimension())
-        
-        # Batch embed and bulk index chunks (batches of 100)
-        batch_size = 100
-        indexed_count = 0
-        failed_count = 0
-        
-        for batch_start in range(0, len(chunks), batch_size):
-            batch = chunks[batch_start:batch_start + batch_size]
-            texts = [c['text'] for c in batch]
-            
-            try:
-                batch_embeddings = embeddings.embed_documents(texts)
-            except Exception as e:
-                logger.warning(f"Batch embedding failed ({e}), falling back to embed_query per chunk")
-                batch_embeddings = [embeddings.embed_query(t) for t in texts]
-                
-            actions = []
-            for i, chunk in enumerate(batch):
-                global_idx = batch_start + i
-                meta = chunk.get('metadata', {})
-                source_val = meta.get('source', url)
-                sec_title = meta.get('section_title', '')
-                doc_id = hashlib.md5(f"{source_val}_{sec_title}_{global_idx}".encode()).hexdigest()
-                
-                actions.append({
-                    "_index": index_name,
-                    "_id": doc_id,
-                    "_source": {
-                        "text": chunk["text"],
-                        "embedding": batch_embeddings[i],
-                        "metadata": meta
-                    }
-                })
-                
-            try:
-                success_n, errors = bulk(client, actions, refresh=False, stats_only=True)
-                indexed_count += success_n
-                failed_count += len(actions) - success_n
-            except Exception as e:
-                logger.error(f"Bulk index error on batch {batch_start}: {e}")
-                failed_count += len(actions)
-                
-        client.indices.refresh(index=index_name)
-        logger.info(f"Ingestion complete for {collection_name}: {indexed_count} indexed, {failed_count} failed")
+        indexed_count, failed_count, chunk_types = _index_chunks(
+            collection_name, chunks, url, replace=bool(data.get('replace')))
+        if not indexed_count:
+            return jsonify({'success': False, 'error': f'0 of {len(chunks)} chunks indexed (see backend log)',
+                            'collection': collection_name, 'failed': failed_count}), 500
         
         return jsonify({
             'success': True,
@@ -3297,6 +3331,109 @@ def start_bulk_ingestion():
     except Exception as e:
         logger.error(f"Error starting bulk ingestion: {e}")
         return jsonify({'error': str(e)}), 500
+
+
+# ============================================================================
+# DAILY SALES MANUAL REFRESH
+# Code Engine scraper -> parse + chunk -> compare content hash -> re-index only the families that changed.
+# Triggered by POST /api/refresh-manuals (a timer on the LPAR calls it once a day).
+# ============================================================================
+
+import threading
+from manual_refresh import refresh_family
+
+manual_refresh_state = {
+    'in_progress': False, 'force': False, 'started_at': None, 'finished_at': None,
+    'current': None, 'total': 0, 'results': []
+}
+_manual_refresh_lock = threading.Lock()
+
+
+def _stored_family_state(family):
+    """What is indexed for a family: content hash and chunker version (from the chunk metadata) and chunk count."""
+    empty = {'hash': None, 'chunker_version': None, 'chunks': 0}
+    client = get_opensearch_client()
+    index_name = _generate_index_name(get_collection_name_for_family(family))
+    if not client.indices.exists(index=index_name):
+        return empty
+    count = client.count(index=index_name)['count']
+    if not count:
+        return empty
+    hits = client.search(index=index_name, body={
+        "size": 1, "query": {"match_all": {}},
+        "_source": ["metadata.content_hash", "metadata.chunker_version"]})['hits']['hits']
+    meta = hits[0]['_source'].get('metadata', {}) if hits else {}
+    return {'hash': meta.get('content_hash'), 'chunker_version': meta.get('chunker_version'), 'chunks': count}
+
+
+def _reindex_family(source, page, chunks):
+    indexed, failed, _ = _index_chunks(get_collection_name_for_family(source['family']), chunks,
+                                       source['url'], replace=True)
+    return indexed, failed
+
+
+def _run_manual_refresh(sources, scraper_url, force):
+    state = manual_refresh_state
+    try:
+        try:
+            requests.get(f"{scraper_url.rstrip('/')}/health", timeout=90)  # wake Code Engine (cold start)
+        except requests.exceptions.RequestException as e:
+            logger.warning(f"[Refresh] scraper health check failed ({e}); continuing, scrapes retry")
+        for source in sources:
+            state['current'] = f"{source.get('name')} ({source['family']})"
+            result = refresh_family(source, scraper_url, _stored_family_state, _reindex_family, force)
+            state['results'].append(result)
+            logger.info(f"[Refresh] {source['family']}: {result['status']} ({result.get('reason')})")
+    finally:
+        state['in_progress'] = False
+        state['current'] = None
+        state['finished_at'] = datetime.now().isoformat()
+        counts = {}
+        for r in state['results']:
+            counts[r['status']] = counts.get(r['status'], 0) + 1
+        logger.info(f"[Refresh] finished: {counts}")
+
+
+@app.route('/api/refresh-manuals', methods=['POST'])
+def start_manual_refresh():
+    """Check the Sales Manuals for changes and re-index the ones that changed.
+
+    Body (all optional): {"force": true} re-index even if the hash matches; {"family": "9080-03"} one family only.
+    Returns at once; poll GET /api/refresh-manuals/status.
+    """
+    data = request.get_json(silent=True) or {}
+    scraper_url = os.environ.get('SCRAPER_URL')
+    if not scraper_url:
+        return jsonify({'error': 'SCRAPER_URL is not set'}), 500
+    try:
+        with open(SOURCES_FILE, encoding='utf-8') as f:
+            sources = [s for ds in json.load(f).get('sets', []) for s in ds.get('sources', [])]
+    except FileNotFoundError:
+        return jsonify({'error': 'sources.json not found'}), 404
+    if data.get('family'):
+        sources = [s for s in sources if s['family'] == data['family']]
+        if not sources:
+            return jsonify({'error': f"unknown family {data['family']}"}), 404
+
+    with _manual_refresh_lock:
+        if manual_refresh_state['in_progress']:
+            return jsonify({'error': 'refresh already in progress', 'current': manual_refresh_state['current']}), 409
+        manual_refresh_state.update(in_progress=True, force=bool(data.get('force')), started_at=datetime.now().isoformat(),
+                                    finished_at=None, current=None, total=len(sources), results=[])
+    threading.Thread(target=_run_manual_refresh, args=(sources, scraper_url, bool(data.get('force'))),
+                     daemon=True).start()
+    return jsonify({'success': True, 'total': len(sources), 'force': bool(data.get('force'))})
+
+
+@app.route('/api/refresh-manuals/status', methods=['GET'])
+def manual_refresh_status():
+    state = dict(manual_refresh_state)
+    counts = {}
+    for r in state['results']:
+        counts[r['status']] = counts.get(r['status'], 0) + 1
+    state['counts'] = counts
+    state['done'] = len(state['results'])
+    return jsonify(state)
 
 
 # ============================================================================
